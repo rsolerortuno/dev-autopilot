@@ -37,7 +37,12 @@ class GateEvaluator:
         return None
 
     def run_test(self, job: JobSpecification, command: str) -> ExecutionResult:
-        return self.command_adapter.run(command, repository=Path(job.repository), timeout_seconds=3600)
+        return self.command_adapter.run(
+            command,
+            repository=Path(job.repository),
+            timeout_seconds=3600,
+            allow_shell=job.test_commands.allow_shell,
+        )
 
     @staticmethod
     def classify_command(result: ExecutionResult) -> GateFailure | None:

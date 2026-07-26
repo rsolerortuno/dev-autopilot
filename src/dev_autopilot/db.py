@@ -435,6 +435,40 @@ class SQLiteStore:
             if cursor.rowcount == 0:
                 raise RunLockError(f"lock for run {run_id} is not owned by {owner_token}")
 
+    def renew_lock(
+        self,
+        run_id: UUID | str,
+        owner_token: str,
+        *,
+        ttl_seconds: int = 300,
+        now: datetime | None = None,
+    ) -> None:
+        """Atomically extend a live lease owned by ``owner_token``.
+
+        Expired leases are never resurrected: after expiry another supervisor may
+        acquire the run, and this owner must stop rather than persist work.
+        """
+        timestamp = now or datetime.now(UTC)
+        expires = timestamp + timedelta(seconds=ttl_seconds)
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """UPDATE run_locks SET expires_at=?
+                   WHERE run_id=? AND owner_token=? AND expires_at > ?""",
+                (_iso(expires), str(run_id), owner_token, _iso(timestamp)),
+            )
+            if cursor.rowcount != 1:
+                raise RunLockError(f"live lock for run {run_id} is not owned by {owner_token}")
+
+    def assert_lock_owner(self, run_id: UUID | str, owner_token: str, *, now: datetime | None = None) -> None:
+        timestamp = now or datetime.now(UTC)
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM run_locks WHERE run_id=? AND owner_token=? AND expires_at > ?",
+                (str(run_id), owner_token, _iso(timestamp)),
+            ).fetchone()
+        if row is None:
+            raise RunLockError(f"live lock for run {run_id} is not owned by {owner_token}")
+
     def request_cancel(self, run_id: UUID | str) -> None:
         with self.transaction() as connection:
             cursor = connection.execute(

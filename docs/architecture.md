@@ -50,6 +50,15 @@ resetting its attempt count.
 
 Every pause stores `resume_state`. Every terminal failure stores a non-empty
 reason and stable `ErrorClass`. A run lock prevents concurrent supervisors.
+Leases are atomically renewed before each phase and must still be live and owned
+by the same token after external execution before its result is persisted. By
+default, a lease is the largest configured agent timeout or gate timeout, plus
+60 seconds for bounded process cleanup (with a 300-second minimum). This lets a
+configured long-running agent finish without the supervisor losing ownership
+mid-call. Callers may explicitly provide a positive TTL for controlled
+deployments. An expired lease is never resurrected: a crashed supervisor can be
+taken over after expiry, while a supervisor that loses ownership stops
+fail-closed without writing a transition.
 
 ## Idempotency and audit cache
 
@@ -61,8 +70,14 @@ exact diff SHA-256; any source change invalidates the cached audit.
 ## Security defaults
 
 - Network-backed real agents require explicit `gates.allow_network: true`.
-- Git writes default to false. Agent execution snapshots HEAD, refs and index;
-  mutation is classified as a security violation.
+- Git writes default to false. Agent execution snapshots HEAD, the complete ref
+  listing, and the actual index returned by `git rev-parse --git-path index`, so
+  linked worktrees are protected too; mutation is a security violation.
+- Agent and local command processes run in a dedicated session. On timeout the
+  whole process group receives bounded TERM then KILL cleanup; Git metadata is
+  checked after cleanup, and a security mutation takes precedence over timeout.
+- Test commands use argv execution by default. Shell evaluation requires the
+  persisted `test_commands.allow_shell: true` opt-in.
 - Scope validation rejects every changed path not matched by an explicit file,
   tree or root-anchored glob rule.
 - The supervisor never stages, commits, pushes, tags or merges.

@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
+import signal
 import subprocess
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 
-from dev_autopilot.models import AgentCommand, ExecutionResult, ResultStatus
+from dev_autopilot.models import AgentCommand, ExecutionResult, ResultStatus, has_shell_syntax
 
 
 def _text(value: bytes | str | None) -> str:
@@ -23,28 +26,49 @@ def _text(value: bytes | str | None) -> str:
 class LocalCommandAdapter:
     def run(
         self,
-        command: str,
+        command: str | tuple[str, ...],
         *,
         repository: Path,
         timeout_seconds: int,
+        allow_shell: bool = False,
     ) -> ExecutionResult:
         try:
-            completed = subprocess.run(
-                command,
+            argv: str | list[str]
+            if allow_shell:
+                if not isinstance(command, str):
+                    return ExecutionResult(status=ResultStatus.MALFORMED, summary="shell commands must be configured as strings")
+                argv = command
+            else:
+                if isinstance(command, str) and has_shell_syntax(command):
+                    return ExecutionResult(
+                        status=ResultStatus.MALFORMED,
+                        summary="shell syntax requires allow_shell=True; configure test_commands.allow_shell: true",
+                    )
+                try:
+                    argv = list(command) if isinstance(command, tuple) else shlex.split(command)
+                except ValueError as exc:
+                    return ExecutionResult(status=ResultStatus.MALFORMED, summary=f"invalid argv command: {exc}")
+                if not argv:
+                    return ExecutionResult(status=ResultStatus.MALFORMED, summary="empty argv command")
+            process = subprocess.Popen(
+                argv,
                 cwd=repository,
-                shell=True,
+                shell=allow_shell,
                 text=True,
-                capture_output=True,
-                timeout=timeout_seconds,
-                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
             )
+            stdout, stderr = process.communicate(timeout=timeout_seconds)
         except subprocess.TimeoutExpired as exc:
+            ExecutableAgentAdapter._terminate_group(process)
             return ExecutionResult(
                 status=ResultStatus.TIMEOUT,
                 summary=f"command timed out after {timeout_seconds}s",
                 stdout=_text(exc.stdout),
                 stderr=_text(exc.stderr),
             )
+        completed = subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
         status = ResultStatus.SUCCESS if completed.returncode == 0 else ResultStatus.ERROR
         return ExecutionResult(
             status=status,
@@ -112,9 +136,27 @@ class ExecutableAgentAdapter:
             completed = subprocess.run(["git", *args], cwd=repository, text=True, capture_output=True, timeout=30, check=False)
             return completed.stdout if completed.returncode == 0 else ""
 
-        index = repository / ".git" / "index"
+        index_path = run("rev-parse", "--git-path", "index").strip()
+        index = Path(index_path)
+        if not index.is_absolute():
+            index = repository / index
         index_hash = hashlib.sha256(index.read_bytes()).hexdigest() if index.is_file() else ""
-        return run("rev-parse", "HEAD").strip(), run("show-ref"), index_hash
+        # JSON gives a stable, unambiguous representation even when a ref name
+        # contains unusual whitespace.
+        refs = tuple(sorted(line for line in run("show-ref", "--head").splitlines() if line))
+        return run("rev-parse", "HEAD").strip(), json.dumps(refs, separators=(",", ":")), index_hash
+
+    @staticmethod
+    def _terminate_group(process: subprocess.Popen[str]) -> None:
+        """Boundedly terminate the complete session, including descendants."""
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=2)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=2)
 
     def execute(
         self,
@@ -142,22 +184,34 @@ class ExecutableAgentAdapter:
                 }
             )
             try:
-                completed = subprocess.run(
+                process = subprocess.Popen(
                     list(self.settings.command),
                     cwd=repository,
                     env=env,
                     text=True,
-                    capture_output=True,
-                    timeout=self.settings.timeout_seconds,
-                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True,
                 )
+                stdout, stderr = process.communicate(timeout=self.settings.timeout_seconds)
             except subprocess.TimeoutExpired as exc:
+                self._terminate_group(process)
+                stdout = _text(exc.stdout)
+                stderr = _text(exc.stderr)
+                if before_git is not None and self._git_metadata(repository) != before_git:
+                    return ExecutionResult(
+                        status=ResultStatus.SECURITY,
+                        summary=f"{self.name} modified git metadata while git writes were disabled",
+                        stdout=stdout,
+                        stderr=stderr,
+                    )
                 return ExecutionResult(
                     status=ResultStatus.TIMEOUT,
                     summary=f"{self.name} timed out",
-                    stdout=_text(exc.stdout),
-                    stderr=_text(exc.stderr),
+                    stdout=stdout,
+                    stderr=stderr,
                 )
+            completed = subprocess.CompletedProcess(list(self.settings.command), process.returncode, stdout, stderr)
             if before_git is not None and self._git_metadata(repository) != before_git:
                 return ExecutionResult(
                     status=ResultStatus.SECURITY,

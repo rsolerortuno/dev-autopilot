@@ -65,3 +65,17 @@ def test_run_lock_is_exclusive_and_expirable(tmp_path, job) -> None:
         store.acquire_lock(run.run_id, "b", ttl_seconds=10, now=now)
     store.acquire_lock(run.run_id, "b", ttl_seconds=10, now=now + timedelta(seconds=11))
     store.release_lock(run.run_id, "b")
+
+
+def test_run_lock_renewal_is_atomic_and_does_not_resurrect_lost_lease(tmp_path, job) -> None:
+    store = SQLiteStore(tmp_path / "state.sqlite3")
+    run = store.create_run(job)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    store.acquire_lock(run.run_id, "owner", ttl_seconds=10, now=now)
+    store.renew_lock(run.run_id, "owner", ttl_seconds=10, now=now + timedelta(seconds=9))
+    store.assert_lock_owner(run.run_id, "owner", now=now + timedelta(seconds=18))
+    with pytest.raises(RunLockError):
+        store.renew_lock(run.run_id, "other", ttl_seconds=10, now=now + timedelta(seconds=18))
+    store.acquire_lock(run.run_id, "other", ttl_seconds=10, now=now + timedelta(seconds=20))
+    with pytest.raises(RunLockError):
+        store.renew_lock(run.run_id, "owner", ttl_seconds=10, now=now + timedelta(seconds=20))

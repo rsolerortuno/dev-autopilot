@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from dev_autopilot.adapters.fake import FakeCommandAdapter, ScriptedAgentAdapter
 from dev_autopilot.db import SQLiteStore
+from dev_autopilot.errors import RunLockError
 from dev_autopilot.models import (
+    AgentCommand,
+    AgentSettings,
     AuditReport,
     ExecutionResult,
     ResultStatus,
@@ -150,3 +155,48 @@ def test_completed_phase_is_reused_after_restart(tmp_path, job) -> None:
         )
     orchestrator.step(run.run_id)
     assert commands.calls == [job.test_commands.baseline]
+
+
+def test_long_fake_agent_phase_renews_lease_and_lost_lease_fails_closed(tmp_path, job) -> None:
+    class AdvancingAgent(ScriptedAgentAdapter):
+        def __init__(self, clock: FakeClock, seconds: int) -> None:
+            super().__init__("codex", [success("implemented")])
+            self.clock, self.seconds = clock, seconds
+
+        def execute(self, **kwargs):
+            self.clock.advance(seconds=self.seconds)
+            return super().execute(**kwargs)
+
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    clock = FakeClock(now)
+    long_job = job.model_copy(update={"agents": AgentSettings(codex=AgentCommand(command=("codex",), timeout_seconds=7200))})
+    assert Orchestrator._lease_ttl_seconds(long_job, None) == 7260
+    store = SQLiteStore(tmp_path / "state.sqlite3")
+    complete = Orchestrator(
+        store,
+        command_adapter=FakeCommandAdapter(changed=["src/a.py"]),
+        codex=AdvancingAgent(clock, 301),
+        agy=ScriptedAgentAdapter("agy", [success("audit", AuditReport(passed=True, summary="clean").to_dict())]),
+        claude_reviewer=ScriptedAgentAdapter(
+            "claude-reviewer", [success("review", ReviewReport(decision=ReviewDecision.APPROVE, summary="ok").to_dict())]
+        ),
+        clock=clock,
+    )
+    run = complete.create_run(long_job)
+    # No explicit TTL: 7,200 seconds plus the cleanup margin covers the
+    # 301-second blocking phase.
+    assert complete.run_until_blocked(run.run_id).state is WorkflowState.READY_FOR_HUMAN_REVIEW
+
+    expired_clock = FakeClock(now)
+    lost = Orchestrator(
+        SQLiteStore(tmp_path / "lost.sqlite3"),
+        command_adapter=FakeCommandAdapter(changed=["src/a.py"]),
+        codex=AdvancingAgent(expired_clock, 301),
+        agy=ScriptedAgentAdapter("agy", []),
+        claude_reviewer=ScriptedAgentAdapter("claude-reviewer", []),
+        clock=expired_clock,
+    )
+    run = lost.create_run(long_job)
+    with pytest.raises(RunLockError, match="live lock"):
+        lost.run_until_blocked(run.run_id, lock_ttl_seconds=300)
+    assert lost.store.get_run(run.run_id).state is WorkflowState.IMPLEMENTATION

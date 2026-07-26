@@ -23,6 +23,9 @@ test_commands:
   baseline: pytest -q
   fast: pytest -q
   final: pytest -q && ruff check . && mypy src
+  # Shell syntax is an explicit trust boundary; replace with argv-safe commands
+  # where practical. This legacy compound command intentionally opts in.
+  allow_shell: true
 retry_policy:
   delays_seconds: [60, 300, 900, 1800, 3600]
   max_attempts: 8

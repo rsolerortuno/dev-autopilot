@@ -5,8 +5,30 @@ software. It coordinates an implementation agent, an adversarial AGY audit and
 an independent Claude review, while SQLite preserves every state transition,
 retry and decision across process restarts.
 
-Version 0.1.0 stops at `READY_FOR_HUMAN_REVIEW`. It never stages, commits,
+Version 0.1.1 stops at `READY_FOR_HUMAN_REVIEW`. It never stages, commits,
 pushes, tags or merges product code.
+
+In plain terms, Dev Autopilot gives independent roles a shared, durable workflow:
+agents can advise, implement, and review, but deterministic gates decide whether
+work may advance and a person decides scientific scope and whether to merge.
+
+## Authority and review order
+
+```text
+AGY planning advice
+    -> Codex implementation
+    -> deterministic gates
+    -> AGY adversarial audit
+    -> independent Claude review
+    -> bounded correction/re-review rounds
+    -> READY_FOR_HUMAN_REVIEW
+    -> human commit/PR/merge decision
+```
+
+AGY planning advice is input, not approval. Codex implements but never approves
+its own work. AGY audits the produced diff adversarially and Claude independently
+reviews that exact diff and may request changes. No agent can override mechanical
+gates. The human retains scientific-scope and merge authority.
 
 ## What works
 
@@ -44,6 +66,51 @@ dev-autopilot --db /tmp/autopilot-demo/state.sqlite3 \
 The fake run executes the same persistence, state, gate, audit and review code as
 a real run and reaches `READY_FOR_HUMAN_REVIEW` without network access.
 
+## Tutorial: a real, narrow issue
+
+Install in the `dev-autopilot` environment, then verify the installation and the
+offline workflow:
+
+```bash
+python -m pip install -e '.[dev]'
+dev-autopilot doctor
+mkdir -p /tmp/autopilot-demo/repo
+dev-autopilot init /tmp/autopilot-demo/job.yaml --repository /tmp/autopilot-demo/repo
+dev-autopilot --db /tmp/autopilot-demo/state.sqlite3 start /tmp/autopilot-demo/job.yaml --fake
+```
+
+For a real issue, first create a separate worktree outside Autopilot, then copy
+and narrow a job (especially `allowed_paths`) to that one issue:
+
+```bash
+git -C /path/to/product worktree add ../product-issue -b issue-work
+cp examples/targetintel-io.job.yaml /tmp/issue.job.yaml
+# Edit /tmp/issue.job.yaml: repository, objective, and allowed_paths.
+dev-autopilot doctor --job /tmp/issue.job.yaml
+```
+
+Use argv arrays for agents. The supplied TargetIntel profile uses the bridge to
+read subscription commands from the environment:
+
+```bash
+export DEV_AUTOPILOT_CODEX_COMMAND='codex YOUR_ARGUMENTS'
+export DEV_AUTOPILOT_AGY_COMMAND='agy YOUR_ARGUMENTS'
+export DEV_AUTOPILOT_CLAUDE_REVIEW_COMMAND='claude YOUR_ARGUMENTS'
+# Save AGY planning advice as part of the issue objective/context before start.
+dev-autopilot --db /tmp/issue.sqlite3 start /tmp/issue.job.yaml
+dev-autopilot --db /tmp/issue.sqlite3 status RUN_ID
+dev-autopilot --db /tmp/issue.sqlite3 watch RUN_ID /tmp/issue.job.yaml
+dev-autopilot --db /tmp/issue.sqlite3 pause RUN_ID
+dev-autopilot --db /tmp/issue.sqlite3 resume RUN_ID /tmp/issue.job.yaml
+```
+
+`PAUSED_QUOTA` can be resumed once its persisted retry deadline is due.
+`PAUSED_HUMAN_DECISION` means a reviewer needs your decision. `FAILED` records
+a fail-closed reason; inspect events before changing anything. At
+`READY_FOR_HUMAN_REVIEW`, inspect the diff and test results yourself, then make
+the commit, PR, and merge outside Autopilot. The TargetIntel example is a starting
+point only: narrow its broad path list for every issue.
+
 ## CLI
 
 ```text
@@ -79,7 +146,10 @@ stdout.
 
 Real execution is disabled unless the job explicitly sets
 `gates.allow_network: true`. Git metadata changes are rejected while
-`gates.allow_git_writes` is false.
+`gates.allow_git_writes` is false. Test command strings are argv-parsed by
+default; shell syntax (`&&`, pipes, redirects) runs only with the explicit
+`test_commands.allow_shell: true` opt-in, because shell evaluation expands the
+trust boundary.
 
 ## TargetIntel-IO
 
