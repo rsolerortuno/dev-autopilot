@@ -26,6 +26,7 @@ classifiers = [
 [project.optional-dependencies]
 dev = [
     "build>=1.2",
+    "wheel>=0.44",
     "mypy>=1.11",
     "pytest>=8",
     "ruff>=0.8",
