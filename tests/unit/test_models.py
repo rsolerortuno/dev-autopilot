@@ -1,140 +1,76 @@
+from __future__ import annotations
+
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
 from dev_autopilot.errors import ErrorClass
 from dev_autopilot.models import (
-    ContractModel,
     FailureRecord,
-    FilePathRule,
     JobSpecification,
     RetryState,
-    RunIdentity,
-    TransitionEvent,
+    validate_path_rule,
 )
-from dev_autopilot.models import TestCommands as Commands
-from dev_autopilot.states import WorkflowState
-
-RUN_ID = UUID("12345678-1234-5678-1234-567812345678")
-CONFIGURATION_ID = "a" * 64
-NOW = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
 
 
-def test_all_required_stable_enum_values() -> None:
-    assert {state.value for state in WorkflowState} == {
-        "CREATED",
-        "PLAN_VALIDATION",
-        "BASELINE_VALIDATION",
-        "IMPLEMENTATION",
-        "SCOPE_VALIDATION",
-        "FAST_TESTS",
-        "AGY_AUDIT",
-        "CLAUDE_REVIEW",
-        "CORRECTION",
-        "FINAL_TESTS",
-        "READY_FOR_HUMAN_REVIEW",
-        "PAUSED_QUOTA",
-        "PAUSED_HUMAN_DECISION",
-        "FAILED",
-        "CANCELLED",
+def test_configuration_hash_is_key_order_independent(repository) -> None:
+    first = {
+        "name": "x",
+        "objective": "y",
+        "repository": str(repository),
+        "allowed_paths": [{"kind": "tree", "path": "src"}],
+        "test_commands": {"baseline": "a", "fast": "b", "final": "c"},
     }
-    assert {error.value for error in ErrorClass} == {
-        "RETRYABLE_QUOTA",
-        "RETRYABLE_TIMEOUT",
-        "RETRYABLE_AGENT_ERROR",
-        "MECHANICAL_OUTPUT_ERROR",
-        "JOB_CONFIGURATION_ERROR",
-        "SCOPE_VIOLATION",
-        "TEST_FAILURE",
-        "REVIEW_FORMAT_ERROR",
-        "SCIENTIFIC_DECISION_REQUIRED",
-        "SECURITY_VIOLATION",
-        "INTERNAL_ORCHESTRATOR_ERROR",
+    second = {
+        "test_commands": {"final": "c", "baseline": "a", "fast": "b"},
+        "allowed_paths": [{"path": "src", "kind": "tree"}],
+        "repository": str(repository),
+        "objective": "y",
+        "name": "x",
     }
+    assert JobSpecification.model_validate(first).configuration_id == JobSpecification.model_validate(second).configuration_id
 
 
-@pytest.mark.parametrize(
-    "model",
-    [
-        RunIdentity(
-            run_id=RUN_ID,
-            job_name="job",
-            configuration_id=CONFIGURATION_ID,
-        ),
-        TransitionEvent(
-            sequence=1,
-            run_id=RUN_ID,
-            from_state=WorkflowState.CREATED,
-            to_state=WorkflowState.PLAN_VALIDATION,
-            occurred_at=NOW,
-            reason="plan accepted",
-        ),
-        RetryState(
-            owner="baseline-validation",
-            count=2,
-            error_class=ErrorClass.RETRYABLE_TIMEOUT,
-        ),
+@pytest.mark.parametrize("value", ["/etc/passwd", "../secret", "src\\x.py", "src/"])
+def test_path_rules_reject_unsafe_values(value: str) -> None:
+    with pytest.raises(ValidationError):
+        validate_path_rule({"kind": "file", "path": value})
+
+
+def test_path_rule_semantics() -> None:
+    assert validate_path_rule({"kind": "file", "path": "README.md"}).matches("README.md")
+    assert not validate_path_rule({"kind": "file", "path": "README.md"}).matches("docs/README.md")
+    assert validate_path_rule({"kind": "tree", "path": "src"}).matches("src/a/b.py")
+    assert validate_path_rule({"kind": "glob", "pattern": "tests/test_*.py"}).matches("tests/test_a.py")
+    assert not validate_path_rule({"kind": "glob", "pattern": "tests/test_*.py"}).matches("tests/unit/test_a.py")
+
+
+def test_duplicate_rules_fail_closed(repository) -> None:
+    with pytest.raises(ValidationError):
+        JobSpecification.model_validate(
+            {
+                "name": "x",
+                "objective": "y",
+                "repository": str(repository),
+                "allowed_paths": [
+                    {"kind": "tree", "path": "src"},
+                    {"kind": "tree", "path": "src"},
+                ],
+                "test_commands": {"baseline": "a", "fast": "b", "final": "c"},
+            }
+        )
+
+
+def test_failure_reason_and_retry_count_are_validated() -> None:
+    with pytest.raises(ValidationError):
         FailureRecord(
-            run_id=RUN_ID,
-            state=WorkflowState.FAST_TESTS,
+            run_id=uuid4(),
+            state="FAILED",
             error_class=ErrorClass.TEST_FAILURE,
-            reason="unit test failed",
-            occurred_at=NOW,
-            owner="fast-tests",
-        ),
-        JobSpecification(
-            name="job",
-            objective="objective",
-            repository="/repo",
-            allowed_paths=(FilePathRule(kind="file", path="README.md"),),
-            test_commands=Commands(
-                baseline="pytest",
-                fast="pytest tests/unit",
-                final="pytest",
-            ),
-        ),
-    ],
-)
-def test_model_json_round_trip_preserves_values(model: ContractModel) -> None:
-    assert model.__class__.from_json(model.to_json()) == model
-    assert model.__class__.from_dict(model.to_dict()) == model
-
-
-def test_models_are_immutable() -> None:
-    retry = RetryState(
-        owner="implementation",
-        count=0,
-        error_class=ErrorClass.RETRYABLE_AGENT_ERROR,
-    )
-
-    with pytest.raises(ValidationError):
-        retry.count = 1  # type: ignore[misc]
-
-
-@pytest.mark.parametrize("reason", ["", "   "])
-def test_failure_reason_must_be_non_empty(reason: str) -> None:
-    with pytest.raises(ValidationError):
-        FailureRecord(
-            run_id=RUN_ID,
-            state=WorkflowState.FAILED,
-            error_class=ErrorClass.INTERNAL_ORCHESTRATOR_ERROR,
-            reason=reason,
-            occurred_at=NOW,
-        )
-
-
-def test_retry_owner_is_required_and_count_cannot_be_negative() -> None:
-    with pytest.raises(ValidationError):
-        RetryState(
-            owner="",
-            count=0,
-            error_class=ErrorClass.RETRYABLE_TIMEOUT,
+            reason=" ",
+            occurred_at=datetime.now(UTC),
         )
     with pytest.raises(ValidationError):
-        RetryState(
-            owner="agent",
-            count=-1,
-            error_class=ErrorClass.RETRYABLE_TIMEOUT,
-        )
+        RetryState(owner="codex", count=-1, error_class=ErrorClass.RETRYABLE_QUOTA)

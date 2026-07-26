@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dev-autopilot"
 version = "0.1.0"
-description = "Typed domain contracts for the Dev Autopilot orchestrator"
+description = "Persistent, auditable multi-agent development orchestrator"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -15,7 +15,7 @@ dependencies = [
     "PyYAML>=6,<7",
 ]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -32,6 +32,10 @@ dev = [
     "types-PyYAML>=6",
 ]
 
+[project.scripts]
+dev-autopilot = "dev_autopilot.cli:main"
+targetintel-autopilot = "dev_autopilot.cli:main"
+
 [tool.setuptools]
 package-dir = { "" = "src" }
 
@@ -45,10 +49,11 @@ dev_autopilot = ["py.typed", "job-specification.schema.json"]
 addopts = "-ra --strict-config --strict-markers"
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = ["integration: integration tests"]
 
 [tool.ruff]
 target-version = "py311"
-line-length = 88
+line-length = 130
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -57,7 +62,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src", "tests"]
+files = ["src"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]

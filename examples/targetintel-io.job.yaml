@@ -1,0 +1,57 @@
+name: targetintel-io-issue
+objective: >-
+  Implement one explicitly assigned TargetIntel-IO issue, validate scientific
+  invariants, complete adversarial audit and independent review, and stop at
+  READY_FOR_HUMAN_REVIEW without staging, committing, pushing or merging.
+repository: /home/rso12/projects/TargetIntel-IO
+allowed_paths:
+  - kind: tree
+    path: src
+  - kind: tree
+    path: tests
+  - kind: tree
+    path: configs
+  - kind: tree
+    path: scripts
+  - kind: tree
+    path: docs
+  - kind: file
+    path: README.md
+  - kind: file
+    path: pyproject.toml
+test_commands:
+  baseline: pytest -q
+  fast: pytest -q
+  final: pytest -q && ruff check . && mypy src
+retry_policy:
+  delays_seconds: [60, 300, 900, 1800, 3600]
+  max_attempts: 8
+  jitter_fraction: 0.1
+gates:
+  allow_network: true
+  allow_git_writes: false
+  require_clean_baseline: false
+  max_changed_files: 200
+  max_context_bytes: 2000000
+review:
+  max_correction_rounds: 3
+  repair_malformed_output_once: true
+  require_agy: true
+scientific_invariants:
+  - Evidence provenance and deterministic identities must remain queryable.
+  - No generated evidence may be presented as observed source evidence.
+  - Offline snapshots and tests must remain deterministic.
+  - The supervisor must not modify files outside the authorized paths.
+agents:
+  codex:
+    command: [python, -m, dev_autopilot.bridge, --env, DEV_AUTOPILOT_CODEX_COMMAND]
+    timeout_seconds: 7200
+  agy:
+    command: [python, -m, dev_autopilot.bridge, --env, DEV_AUTOPILOT_AGY_COMMAND]
+    timeout_seconds: 3600
+  claude_reviewer:
+    command: [python, -m, dev_autopilot.bridge, --env, DEV_AUTOPILOT_CLAUDE_REVIEW_COMMAND]
+    timeout_seconds: 3600
+  claude_supervisor:
+    command: [python, -m, dev_autopilot.bridge, --env, DEV_AUTOPILOT_CLAUDE_SUPERVISOR_COMMAND]
+    timeout_seconds: 3600
