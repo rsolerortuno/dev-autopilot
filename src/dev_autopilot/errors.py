@@ -1,11 +1,9 @@
-"""Configuration exceptions and stable error classification."""
+"""Exceptions and stable failure classifications."""
 
 from enum import StrEnum
 
 
 class ErrorClass(StrEnum):
-    """A stable, serialized class for a recorded failure."""
-
     RETRYABLE_QUOTA = "RETRYABLE_QUOTA"
     RETRYABLE_TIMEOUT = "RETRYABLE_TIMEOUT"
     RETRYABLE_AGENT_ERROR = "RETRYABLE_AGENT_ERROR"
@@ -19,5 +17,25 @@ class ErrorClass(StrEnum):
     INTERNAL_ORCHESTRATOR_ERROR = "INTERNAL_ORCHESTRATOR_ERROR"
 
 
+class AutopilotError(RuntimeError):
+    """Base runtime error."""
+
+
 class ConfigurationError(ValueError):
     """A job configuration could not be parsed or validated."""
+
+
+class PersistenceError(AutopilotError):
+    """Persistent state is missing or inconsistent."""
+
+
+class TransitionError(AutopilotError):
+    """A requested workflow transition is illegal."""
+
+
+class RunLockError(AutopilotError):
+    """A run is already owned by another process."""
+
+
+class AdapterError(AutopilotError):
+    """An adapter contract was violated."""

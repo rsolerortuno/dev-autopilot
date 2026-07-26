@@ -1,4 +1,4 @@
-"""Immutable, serializable domain models for Dev Autopilot."""
+"""Immutable serializable contracts for configuration and runtime records."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Annotated, Any, Literal, TypeVar
 from uuid import UUID
@@ -29,46 +30,28 @@ _GLOB_META = frozenset("*?[")
 
 
 class ContractModel(BaseModel):
-    """Shared strict, immutable contract with JSON round-trip helpers."""
-
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        strict=True,
-        validate_default=True,
-    )
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, validate_default=True)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-compatible representation."""
-
         return self.model_dump(mode="json")
 
     def to_json(self) -> str:
-        """Serialize using deterministic JSON formatting."""
-
-        return json.dumps(
-            self.to_dict(),
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        )
+        return json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
     @classmethod
     def from_dict(cls: type[ModelT], value: dict[str, Any]) -> ModelT:
-        """Deserialize a JSON-compatible mapping."""
-
         return cls.model_validate_json(json.dumps(value))
 
     @classmethod
     def from_json(cls: type[ModelT], value: str | bytes) -> ModelT:
-        """Deserialize a JSON document."""
-
         return cls.model_validate_json(value)
 
 
-def _normalize_repository_path(value: str) -> str:
-    """Validate and normalize one repository-relative POSIX path."""
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
+
+def _normalize_repository_path(value: str) -> str:
     if not value.strip():
         raise ValueError("path must not be empty")
     if value != value.strip():
@@ -77,15 +60,11 @@ def _normalize_repository_path(value: str) -> str:
         raise ValueError("path must use '/' as its separator")
     if value.startswith("/") or PureWindowsPath(value).is_absolute():
         raise ValueError("absolute paths are not allowed")
-
     parts = value.split("/")
     if ".." in parts:
         raise ValueError("'..' path traversal is not allowed")
     if value.endswith("/"):
-        raise ValueError(
-            "trailing '/' is ambiguous; use kind='tree' for a complete directory tree"
-        )
-
+        raise ValueError("trailing '/' is ambiguous; use kind='tree' for a directory tree")
     normalized = PurePosixPath(value).as_posix()
     if normalized in {"", "."}:
         raise ValueError("path must identify a repository entry")
@@ -93,8 +72,6 @@ def _normalize_repository_path(value: str) -> str:
 
 
 def _glob_to_regex(pattern: str) -> re.Pattern[str]:
-    """Compile a documented repository-root glob without fnmatch quirks."""
-
     index = 0
     result = ["^"]
     while index < len(pattern):
@@ -120,8 +97,7 @@ def _glob_to_regex(pattern: str) -> re.Pattern[str]:
                 raise ValueError("glob contains an empty character range")
             if content[0] == "!":
                 content = "^" + content[1:]
-            escaped = content.replace("\\", r"\\").replace("]", r"\]")
-            result.append("[" + escaped + "]")
+            result.append("[" + content.replace("\\", r"\\") + "]")
             index = end
         else:
             result.append(re.escape(char))
@@ -131,8 +107,6 @@ def _glob_to_regex(pattern: str) -> re.Pattern[str]:
 
 
 class FilePathRule(ContractModel):
-    """Allow exactly one repository-relative file path."""
-
     kind: Literal["file"]
     path: str
 
@@ -145,14 +119,10 @@ class FilePathRule(ContractModel):
         return normalized
 
     def matches(self, candidate: str) -> bool:
-        """Return whether *candidate* is this exact file."""
-
         return _normalize_repository_path(candidate) == self.path
 
 
 class TreePathRule(ContractModel):
-    """Allow one directory and every path below it."""
-
     kind: Literal["tree"]
     path: str
 
@@ -165,19 +135,11 @@ class TreePathRule(ContractModel):
         return normalized
 
     def matches(self, candidate: str) -> bool:
-        """Return whether *candidate* is the directory or one of its descendants."""
-
         normalized = _normalize_repository_path(candidate)
         return normalized == self.path or normalized.startswith(f"{self.path}/")
 
 
 class GlobPathRule(ContractModel):
-    """Allow paths matched by an explicit repository-root glob.
-
-    ``*`` and ``?`` never cross ``/``; ``**`` does. Matching is case-sensitive
-    and is always against the complete repository-relative path.
-    """
-
     kind: Literal["glob"]
     pattern: str
 
@@ -186,50 +148,90 @@ class GlobPathRule(ContractModel):
     def validate_pattern(cls, value: str) -> str:
         normalized = _normalize_repository_path(value)
         if not any(character in normalized for character in _GLOB_META):
-            raise ValueError(
-                "glob rules must contain explicit glob syntax; use kind='file' "
-                "or kind='tree' otherwise"
-            )
+            raise ValueError("glob rules must contain explicit glob syntax")
         _glob_to_regex(normalized)
         return normalized
 
     def matches(self, candidate: str) -> bool:
-        """Return whether *candidate* matches this complete-path glob."""
-
         normalized = _normalize_repository_path(candidate)
         return _glob_to_regex(self.pattern).fullmatch(normalized) is not None
 
 
-PathRule = Annotated[
-    FilePathRule | TreePathRule | GlobPathRule,
-    Field(discriminator="kind"),
-]
+PathRule = Annotated[FilePathRule | TreePathRule | GlobPathRule, Field(discriminator="kind")]
 _PATH_RULE_ADAPTER: TypeAdapter[PathRule] = TypeAdapter(PathRule)
 
 
 class TestCommands(ContractModel):
-    """Separate commands for baseline, fast-feedback, and final validation."""
-
     baseline: NonEmptyString
     fast: NonEmptyString
     final: NonEmptyString
 
 
-class JobSpecification(ContractModel):
-    """Validated configuration for one general-purpose development job."""
+class AgentCommand(ContractModel):
+    command: tuple[str, ...] = Field(min_length=1)
+    timeout_seconds: Annotated[int, Field(gt=0)] = 3600
 
+    @field_validator("command", mode="before")
+    @classmethod
+    def freeze_command(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+
+class AgentSettings(ContractModel):
+    codex: AgentCommand | None = None
+    agy: AgentCommand | None = None
+    claude_reviewer: AgentCommand | None = None
+    claude_supervisor: AgentCommand | None = None
+
+
+class RetryPolicySpec(ContractModel):
+    delays_seconds: tuple[int, ...] = (60, 300, 900, 1800, 3600)
+    max_attempts: Annotated[int, Field(gt=0)] = 8
+    jitter_fraction: Annotated[float, Field(ge=0.0, le=1.0)] = 0.1
+
+    @field_validator("delays_seconds", mode="before")
+    @classmethod
+    def freeze_delays(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("delays_seconds")
+    @classmethod
+    def validate_delays(cls, value: tuple[int, ...]) -> tuple[int, ...]:
+        if not value or any(delay < 0 for delay in value):
+            raise ValueError("retry delays must be a non-empty list of non-negative values")
+        return value
+
+
+class GatePolicy(ContractModel):
+    allow_network: bool = False
+    allow_git_writes: bool = False
+    require_clean_baseline: bool = False
+    max_changed_files: Annotated[int, Field(gt=0)] = 200
+    max_context_bytes: Annotated[int, Field(gt=0)] = 2_000_000
+
+
+class ReviewPolicy(ContractModel):
+    max_correction_rounds: Annotated[int, Field(ge=0)] = 3
+    repair_malformed_output_once: bool = True
+    require_agy: bool = True
+
+
+class JobSpecification(ContractModel):
     name: NonEmptyString
     objective: NonEmptyString
     repository: NonEmptyString
     allowed_paths: tuple[PathRule, ...] = Field(min_length=1)
     test_commands: TestCommands
+    agents: AgentSettings = AgentSettings()
+    retry_policy: RetryPolicySpec = RetryPolicySpec()
+    gates: GatePolicy = GatePolicy()
+    review: ReviewPolicy = ReviewPolicy()
+    scientific_invariants: tuple[str, ...] = ()
 
-    @field_validator("allowed_paths", mode="before")
+    @field_validator("allowed_paths", "scientific_invariants", mode="before")
     @classmethod
-    def freeze_allowed_paths(cls, value: object) -> object:
-        if isinstance(value, list):
-            return tuple(value)
-        return value
+    def freeze_sequences(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
 
     @field_validator("repository")
     @classmethod
@@ -245,40 +247,25 @@ class JobSpecification(ContractModel):
             value = rule.pattern if isinstance(rule, GlobPathRule) else rule.path
             key = (rule.kind, value)
             if key in seen:
-                message = f"duplicate normalized allowed-path rule: {rule.kind}:{value}"
-                raise ValueError(message)
+                raise ValueError(f"duplicate normalized allowed-path rule: {key}")
             seen.add(key)
         return self
 
     @property
     def configuration_id(self) -> str:
-        """SHA-256 identity of the canonical validated configuration."""
-
-        canonical = json.dumps(
-            self.to_dict(),
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode()
-        return hashlib.sha256(canonical).hexdigest()
+        return hashlib.sha256(self.to_json().encode()).hexdigest()
 
     def allows_path(self, candidate: str) -> bool:
-        """Return whether any configured rule allows *candidate*."""
-
         return any(rule.matches(candidate) for rule in self.allowed_paths)
 
 
 class RunIdentity(ContractModel):
-    """Stable identity of a run and the configuration that created it."""
-
     run_id: UUID
     job_name: NonEmptyString
     configuration_id: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
 class TransitionEvent(ContractModel):
-    """A recorded state transition; sequencing is supplied by future persistence."""
-
     sequence: Annotated[int, Field(ge=0)]
     run_id: UUID
     from_state: WorkflowState | None
@@ -295,16 +282,23 @@ class TransitionEvent(ContractModel):
 
 
 class RetryState(ContractModel):
-    """Retry count owned by one named agent or deterministic phase."""
-
     owner: NonEmptyString
     count: Annotated[int, Field(ge=0)]
     error_class: ErrorClass
+    next_attempt_at: datetime | None = None
+    last_reason: NonEmptyString | None = None
+
+    @field_validator("next_attempt_at")
+    @classmethod
+    def normalize_next_attempt(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("next_attempt_at must include a timezone")
+        return value.astimezone(UTC)
 
 
 class FailureRecord(ContractModel):
-    """A classified failure with a mandatory human-readable reason."""
-
     run_id: UUID
     state: WorkflowState
     error_class: ErrorClass
@@ -320,9 +314,67 @@ class FailureRecord(ContractModel):
         return value.astimezone(UTC)
 
 
-def validate_path_rule(
-    value: dict[str, Any],
-) -> FilePathRule | TreePathRule | GlobPathRule:
-    """Validate a standalone path rule using the same discriminated contract."""
+class RunRecord(ContractModel):
+    run_id: UUID
+    job: JobSpecification
+    state: WorkflowState
+    resume_state: WorkflowState | None = None
+    stop_reason: str | None = None
+    failure_class: ErrorClass | None = None
+    created_at: datetime
+    updated_at: datetime
+    cancel_requested: bool = False
+    approved_at: datetime | None = None
+    archived_at: datetime | None = None
+    correction_rounds: Annotated[int, Field(ge=0)] = 0
 
+
+class ResultStatus(StrEnum):
+    SUCCESS = "SUCCESS"
+    QUOTA = "QUOTA"
+    TIMEOUT = "TIMEOUT"
+    ERROR = "ERROR"
+    MALFORMED = "MALFORMED"
+    SECURITY = "SECURITY"
+
+
+class ExecutionResult(ContractModel):
+    status: ResultStatus
+    summary: NonEmptyString
+    output: dict[str, Any] = Field(default_factory=dict)
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int | None = None
+    quota_reset_at: datetime | None = None
+
+
+class ReviewDecision(StrEnum):
+    APPROVE = "APPROVE"
+    REQUEST_CHANGES = "REQUEST_CHANGES"
+    HUMAN_DECISION = "HUMAN_DECISION"
+
+
+class ReviewReport(ContractModel):
+    decision: ReviewDecision
+    summary: NonEmptyString
+    findings: tuple[str, ...] = ()
+
+    @field_validator("findings", mode="before")
+    @classmethod
+    def freeze_findings(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+
+class AuditReport(ContractModel):
+    passed: bool
+    summary: NonEmptyString
+    findings: tuple[str, ...] = ()
+
+    @field_validator("findings", mode="before")
+    @classmethod
+    def freeze_findings(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+
+def validate_path_rule(value: dict[str, Any]) -> FilePathRule | TreePathRule | GlobPathRule:
     return _PATH_RULE_ADAPTER.validate_python(value, strict=True)

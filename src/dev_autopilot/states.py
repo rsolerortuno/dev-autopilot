@@ -4,8 +4,6 @@ from enum import StrEnum
 
 
 class WorkflowState(StrEnum):
-    """A durable state name for a future Dev Autopilot run."""
-
     CREATED = "CREATED"
     PLAN_VALIDATION = "PLAN_VALIDATION"
     BASELINE_VALIDATION = "BASELINE_VALIDATION"
@@ -21,3 +19,13 @@ class WorkflowState(StrEnum):
     PAUSED_HUMAN_DECISION = "PAUSED_HUMAN_DECISION"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+
+
+TERMINAL_STATES = frozenset(
+    {
+        WorkflowState.READY_FOR_HUMAN_REVIEW,
+        WorkflowState.FAILED,
+        WorkflowState.CANCELLED,
+    }
+)
+PAUSED_STATES = frozenset({WorkflowState.PAUSED_QUOTA, WorkflowState.PAUSED_HUMAN_DECISION})
