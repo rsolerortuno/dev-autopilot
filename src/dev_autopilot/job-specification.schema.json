@@ -1,0 +1,152 @@
+{
+  "$defs": {
+    "FilePathRule": {
+      "additionalProperties": false,
+      "description": "Allow exactly one repository-relative file path.",
+      "properties": {
+        "kind": {
+          "const": "file",
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "title": "FilePathRule",
+      "type": "object"
+    },
+    "GlobPathRule": {
+      "additionalProperties": false,
+      "description": "Allow paths matched by an explicit repository-root glob.\n\n``*`` and ``?`` never cross ``/``; ``**`` does. Matching is case-sensitive\nand is always against the complete repository-relative path.",
+      "properties": {
+        "kind": {
+          "const": "glob",
+          "title": "Kind",
+          "type": "string"
+        },
+        "pattern": {
+          "title": "Pattern",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "pattern"
+      ],
+      "title": "GlobPathRule",
+      "type": "object"
+    },
+    "TestCommands": {
+      "additionalProperties": false,
+      "description": "Separate commands for baseline, fast-feedback, and final validation.",
+      "properties": {
+        "baseline": {
+          "minLength": 1,
+          "title": "Baseline",
+          "type": "string"
+        },
+        "fast": {
+          "minLength": 1,
+          "title": "Fast",
+          "type": "string"
+        },
+        "final": {
+          "minLength": 1,
+          "title": "Final",
+          "type": "string"
+        }
+      },
+      "required": [
+        "baseline",
+        "fast",
+        "final"
+      ],
+      "title": "TestCommands",
+      "type": "object"
+    },
+    "TreePathRule": {
+      "additionalProperties": false,
+      "description": "Allow one directory and every path below it.",
+      "properties": {
+        "kind": {
+          "const": "tree",
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "title": "TreePathRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Validated configuration for one general-purpose development job.",
+  "properties": {
+    "allowed_paths": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "file": "#/$defs/FilePathRule",
+            "glob": "#/$defs/GlobPathRule",
+            "tree": "#/$defs/TreePathRule"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/FilePathRule"
+          },
+          {
+            "$ref": "#/$defs/TreePathRule"
+          },
+          {
+            "$ref": "#/$defs/GlobPathRule"
+          }
+        ]
+      },
+      "minItems": 1,
+      "title": "Allowed Paths",
+      "type": "array"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "objective": {
+      "minLength": 1,
+      "title": "Objective",
+      "type": "string"
+    },
+    "repository": {
+      "minLength": 1,
+      "title": "Repository",
+      "type": "string"
+    },
+    "test_commands": {
+      "$ref": "#/$defs/TestCommands"
+    }
+  },
+  "required": [
+    "name",
+    "objective",
+    "repository",
+    "allowed_paths",
+    "test_commands"
+  ],
+  "title": "JobSpecification",
+  "type": "object"
+}
