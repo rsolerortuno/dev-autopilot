@@ -46,13 +46,14 @@ class FakeCommandAdapter:
 
     def run(
         self,
-        command: str,
+        command: str | tuple[str, ...],
         *,
         repository: Path,
         timeout_seconds: int,
+        allow_shell: bool = False,
     ) -> ExecutionResult:
-        del repository, timeout_seconds
-        self.calls.append(command)
+        del repository, timeout_seconds, allow_shell
+        self.calls.append(" ".join(command) if isinstance(command, tuple) else command)
         if self._results:
             return self._results.popleft()
         return ExecutionResult(status=ResultStatus.SUCCESS, summary=f"passed: {command}")

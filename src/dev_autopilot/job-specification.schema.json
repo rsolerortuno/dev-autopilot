@@ -209,6 +209,11 @@
     "TestCommands": {
       "additionalProperties": false,
       "properties": {
+        "allow_shell": {
+          "default": false,
+          "title": "Allow Shell",
+          "type": "boolean"
+        },
         "baseline": {
           "minLength": 1,
           "title": "Baseline",

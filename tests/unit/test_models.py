@@ -33,6 +33,20 @@ def test_configuration_hash_is_key_order_independent(repository) -> None:
     assert JobSpecification.model_validate(first).configuration_id == JobSpecification.model_validate(second).configuration_id
 
 
+def test_shell_syntax_requires_explicit_configuration_opt_in(repository) -> None:
+    config = {
+        "name": "x",
+        "objective": "y",
+        "repository": str(repository),
+        "allowed_paths": [{"kind": "tree", "path": "src"}],
+        "test_commands": {"baseline": "pytest && ruff check .", "fast": "pytest", "final": "pytest"},
+    }
+    with pytest.raises(ValidationError, match="allow_shell"):
+        JobSpecification.model_validate(config)
+    config["test_commands"]["allow_shell"] = True
+    assert JobSpecification.model_validate(config).test_commands.allow_shell is True
+
+
 @pytest.mark.parametrize("value", ["/etc/passwd", "../secret", "src\\x.py", "src/"])
 def test_path_rules_reject_unsafe_values(value: str) -> None:
     with pytest.raises(ValidationError):

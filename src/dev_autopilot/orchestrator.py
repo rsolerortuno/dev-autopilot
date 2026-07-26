@@ -37,6 +37,10 @@ from dev_autopilot.states import PAUSED_STATES, TERMINAL_STATES, WorkflowState
 class Orchestrator:
     """Coordinate deterministic gates and independent agent adapters."""
 
+    _GATE_TIMEOUT_SECONDS = 3600
+    _LEASE_CLEANUP_MARGIN_SECONDS = 60
+    _MINIMUM_LEASE_SECONDS = 300
+
     def __init__(
         self,
         store: SQLiteStore,
@@ -57,6 +61,7 @@ class Orchestrator:
         self.claude_reviewer = claude_reviewer
         self.claude_supervisor = claude_supervisor
         self.clock = clock or SystemClock()
+        self._active_lock_token: str | None = None
 
     def create_run(self, job: JobSpecification, *, run_id: UUID | None = None) -> RunRecord:
         return self.store.create_run(job, run_id=run_id, now=self.clock.now())
@@ -66,19 +71,26 @@ class Orchestrator:
         run_id: UUID | str,
         *,
         max_steps: int = 100,
-        lock_ttl_seconds: int = 300,
+        lock_ttl_seconds: int | None = None,
     ) -> RunRecord:
+        run = self.store.get_run(run_id)
+        lease_ttl_seconds = self._lease_ttl_seconds(run.job, lock_ttl_seconds)
         token = f"orchestrator-{uuid4()}"
-        self.store.acquire_lock(run_id, token, ttl_seconds=lock_ttl_seconds, now=self.clock.now())
+        self.store.acquire_lock(run_id, token, ttl_seconds=lease_ttl_seconds, now=self.clock.now())
+        self._active_lock_token = token
         try:
             for _ in range(max_steps):
+                # The default lease spans the longest configured external phase
+                # plus cleanup. Renew it before every phase, then verify again
+                # before its state transition. A lost lease is fail-closed.
+                self.store.renew_lock(run_id, token, ttl_seconds=lease_ttl_seconds, now=self.clock.now())
                 run = self.store.get_run(run_id)
                 if run.cancel_requested and run.state not in TERMINAL_STATES:
                     return self.engine.cancel(run_id, reason="persistent cancellation requested")
                 if run.state in TERMINAL_STATES or run.state in PAUSED_STATES:
                     return run
                 before = run.state
-                self.step(run_id)
+                self.step(run_id, lock_token=token)
                 after = self.store.get_run(run_id)
                 if after.state == before:
                     return after
@@ -88,10 +100,11 @@ class Orchestrator:
                 f"step limit exceeded: {max_steps}",
             )
         finally:
+            self._active_lock_token = None
             with suppress(RunLockError):
                 self.store.release_lock(run_id, token)
 
-    def step(self, run_id: UUID | str) -> RunRecord:
+    def step(self, run_id: UUID | str, *, lock_token: str | None = None) -> RunRecord:
         run = self.store.get_run(run_id)
         handlers = {
             WorkflowState.CREATED: self._created,
@@ -109,7 +122,14 @@ class Orchestrator:
         if handler is None:
             return run
         try:
-            return handler(run)
+            result = handler(run)
+            if lock_token is not None:
+                self.store.assert_lock_owner(run_id, lock_token, now=self.clock.now())
+            return result
+        except RunLockError:
+            # Losing the lease means another supervisor may have taken over.
+            # Do not write a failure transition from this stale supervisor.
+            raise
         except Exception as exc:
             return self.engine.fail(
                 run.run_id,
@@ -175,6 +195,7 @@ class Orchestrator:
             )
             return self.engine.transition(run.run_id, next_state, reason=reason)
         result = self.gates.run_test(run.job, command)
+        self._assert_lease(run.run_id)
         failure = self.gates.classify_command(result)
         if failure is not None:
             return self.engine.fail(run.run_id, failure.error_class, failure.reason)
@@ -196,6 +217,7 @@ class Orchestrator:
             context=self._agent_context(run),
             output_contract=IMPLEMENTATION_CONTRACT,
         )
+        self._assert_lease(run.run_id)
         return self._handle_agent_result(run, self.codex.name, result, WorkflowState.SCOPE_VALIDATION)
 
     def _scope(self, run: RunRecord) -> RunRecord:
@@ -224,6 +246,7 @@ class Orchestrator:
                 context=self._agent_context(run),
                 output_contract=AUDIT_CONTRACT,
             )
+            self._assert_lease(run.run_id)
             handled = self._handle_retry_only(run, self.agy.name, result)
             if handled is not None:
                 return handled
@@ -247,6 +270,7 @@ class Orchestrator:
             context=self._agent_context(run),
             output_contract=REVIEW_CONTRACT,
         )
+        self._assert_lease(run.run_id)
         handled = self._handle_retry_only(run, self.claude_reviewer.name, result)
         if handled is not None:
             return handled
@@ -281,6 +305,7 @@ class Orchestrator:
             context=self._agent_context(run),
             output_contract=IMPLEMENTATION_CONTRACT,
         )
+        self._assert_lease(run.run_id)
         return self._handle_agent_result(run, self.codex.name, result, WorkflowState.SCOPE_VALIDATION)
 
     def _final_tests(self, run: RunRecord) -> RunRecord:
@@ -376,3 +401,34 @@ class Orchestrator:
         if state is WorkflowState.CLAUDE_REVIEW:
             return "claude-reviewer"
         return state.value.lower()
+
+    @classmethod
+    def _lease_ttl_seconds(cls, job: JobSpecification, requested_ttl: int | None) -> int:
+        """Return an explicit TTL or one that covers every configured phase.
+
+        Adapter calls are synchronous, so a fixed short lease would expire
+        during a legitimate long-running process. The default covers the
+        largest configured agent timeout (or fixed gate timeout) and bounded
+        process-group cleanup. An explicit TTL remains available for controlled
+        deployments and deterministic lost-lease tests.
+        """
+        if requested_ttl is not None:
+            if requested_ttl <= 0:
+                raise ValueError("lock_ttl_seconds must be positive")
+            return requested_ttl
+        agent_timeouts = [
+            setting.timeout_seconds
+            for setting in (
+                job.agents.codex,
+                job.agents.agy,
+                job.agents.claude_reviewer,
+                job.agents.claude_supervisor,
+            )
+            if setting is not None
+        ]
+        longest_phase = max([cls._GATE_TIMEOUT_SECONDS, *agent_timeouts])
+        return max(cls._MINIMUM_LEASE_SECONDS, longest_phase + cls._LEASE_CLEANUP_MARGIN_SECONDS)
+
+    def _assert_lease(self, run_id: UUID | str) -> None:
+        if self._active_lock_token is not None:
+            self.store.assert_lock_owner(run_id, self._active_lock_token, now=self.clock.now())

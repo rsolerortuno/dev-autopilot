@@ -126,6 +126,9 @@ test_commands:
   baseline: pytest -q
   fast: pytest -q
   final: pytest -q
+  # Strings are argv-parsed by default. Set allow_shell: true only for trusted
+  # shell syntax such as pipes or &&.
+  allow_shell: false
 retry_policy:
   delays_seconds: [60, 300, 900, 1800, 3600]
   max_attempts: 8

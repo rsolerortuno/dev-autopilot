@@ -1,13 +1,24 @@
-# Validation record
+# Validation
 
-Executed offline on Python 3.13.5:
+## Local, offline validation
 
-- `pytest -q`: 43 passed;
-- existing `main` contract, configuration and path-rule behavior included;
-- `python -m compileall -q src tests`: passed;
-- editable install with `--no-build-isolation`: passed;
-- CLI smoke flow `init -> doctor -> start --fake -> approve -> archive`: passed;
-- terminal state from the smoke run: `READY_FOR_HUMAN_REVIEW`.
+Run from a development environment with `.[dev]` installed:
 
-`ruff`, `mypy` and `python -m build` were not available in the isolated execution
-environment. CI is configured to run all three after dependencies are installed.
+```bash
+pytest -q
+ruff check .
+ruff format --check .
+mypy
+python -m build --no-isolation
+python -m venv /tmp/dev-autopilot-wheel
+/tmp/dev-autopilot-wheel/bin/pip install dist/*.whl
+/tmp/dev-autopilot-wheel/bin/python -c 'import dev_autopilot'
+git diff --check
+```
+
+The test suite uses fake adapters and does not call live Codex, AGY, or Claude.
+
+## CI validation
+
+The CI matrix runs the same pytest, Ruff check, Ruff format check, strict mypy,
+package build, and fresh-wheel import smoke test on Python 3.11, 3.12, and 3.13.

@@ -27,6 +27,12 @@ from dev_autopilot.states import WorkflowState
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 ModelT = TypeVar("ModelT", bound="ContractModel")
 _GLOB_META = frozenset("*?[")
+_SHELL_OPERATORS = re.compile(r"(?:&&|\|\||[|;<>]|`|\$\(|\n)")
+
+
+def has_shell_syntax(command: str) -> bool:
+    """Return whether a command requires shell parsing rather than argv parsing."""
+    return _SHELL_OPERATORS.search(command) is not None
 
 
 class ContractModel(BaseModel):
@@ -165,6 +171,21 @@ class TestCommands(ContractModel):
     baseline: NonEmptyString
     fast: NonEmptyString
     final: NonEmptyString
+    # Strings are parsed as argv by default.  This opt-in is deliberately part
+    # of the persisted configuration identity: shell syntax is a trust decision.
+    allow_shell: bool = False
+
+    @model_validator(mode="after")
+    def require_explicit_shell_opt_in(self) -> TestCommands:
+        if not self.allow_shell:
+            shell_commands = [name for name in ("baseline", "fast", "final") if has_shell_syntax(getattr(self, name))]
+            if shell_commands:
+                raise ValueError(
+                    "shell syntax in test command(s) "
+                    + ", ".join(shell_commands)
+                    + "; set test_commands.allow_shell: true to explicitly trust shell execution"
+                )
+        return self
 
 
 class AgentCommand(ContractModel):

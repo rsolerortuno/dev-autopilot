@@ -24,10 +24,11 @@ class AgentAdapter(Protocol):
 class CommandAdapter(Protocol):
     def run(
         self,
-        command: str,
+        command: str | tuple[str, ...],
         *,
         repository: Path,
         timeout_seconds: int,
+        allow_shell: bool = False,
     ) -> ExecutionResult: ...
 
     def changed_files(self, *, repository: Path) -> tuple[str, ...]: ...
