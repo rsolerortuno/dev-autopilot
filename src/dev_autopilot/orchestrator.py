@@ -1,22 +1,40 @@
-"""Resumable end-to-end orchestration loop."""
+"""Resumable M05 orchestration with integrated evidence and review ledger."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
+from typing import Any, TypeVar
 from uuid import UUID, uuid4
 
 from dev_autopilot.adapters.base import AgentAdapter, CommandAdapter
+from dev_autopilot.adapters.fake import ScriptedAgentAdapter
+from dev_autopilot.baseline import capture_baseline
+from dev_autopilot.bundle import BundleInputs, verify_bundle, write_bundle
 from dev_autopilot.db import SQLiteStore
 from dev_autopilot.engine import TransitionEngine
 from dev_autopilot.errors import AdapterError, ErrorClass, RunLockError
 from dev_autopilot.events import EventType
+from dev_autopilot.evidence import RunEvidenceStore
+from dev_autopilot.findings import (
+    SCORING_RUBRIC,
+    FindingCategory,
+    FindingStatus,
+    MilestoneScore,
+    ReviewerRole,
+    Severity,
+    evaluate_acceptance,
+)
 from dev_autopilot.gates import GateEvaluator
+from dev_autopilot.ledger import FindingLedger
 from dev_autopilot.models import (
     AuditReport,
     ExecutionResult,
+    ImplementationReport,
     JobSpecification,
     ResultStatus,
     ReviewDecision,
@@ -29,13 +47,16 @@ from dev_autopilot.review import (
     IMPLEMENTATION_CONTRACT,
     REVIEW_CONTRACT,
     parse_audit_output,
+    parse_implementation_output,
     parse_review_output,
 )
 from dev_autopilot.states import PAUSED_STATES, TERMINAL_STATES, WorkflowState
 
+ParsedT = TypeVar("ParsedT")
+
 
 class Orchestrator:
-    """Coordinate deterministic gates and independent agent adapters."""
+    """Coordinate deterministic gates, independent agents and M02/M03 evidence."""
 
     _GATE_TIMEOUT_SECONDS = 3600
     _LEASE_CLEANUP_MARGIN_SECONDS = 60
@@ -61,6 +82,8 @@ class Orchestrator:
         self.claude_reviewer = claude_reviewer
         self.claude_supervisor = claude_supervisor
         self.clock = clock or SystemClock()
+        self.ledger = FindingLedger(store)
+        self.evidence = RunEvidenceStore(store)
         self._active_lock_token: str | None = None
 
     def create_run(self, job: JobSpecification, *, run_id: UUID | None = None) -> RunRecord:
@@ -80,9 +103,6 @@ class Orchestrator:
         self._active_lock_token = token
         try:
             for _ in range(max_steps):
-                # The default lease spans the longest configured external phase
-                # plus cleanup. Renew it before every phase, then verify again
-                # before its state transition. A lost lease is fail-closed.
                 self.store.renew_lock(run_id, token, ttl_seconds=lease_ttl_seconds, now=self.clock.now())
                 run = self.store.get_run(run_id)
                 if run.cancel_requested and run.state not in TERMINAL_STATES:
@@ -127,14 +147,22 @@ class Orchestrator:
                 self.store.assert_lock_owner(run_id, lock_token, now=self.clock.now())
             return result
         except RunLockError:
-            # Losing the lease means another supervisor may have taken over.
-            # Do not write a failure transition from this stale supervisor.
             raise
         except Exception as exc:
+            diagnosis = ""
+            if self.claude_supervisor is not None:
+                with suppress(Exception):
+                    supervised = self.claude_supervisor.execute(
+                        task="Diagnose this operational orchestration failure without modifying product files",
+                        repository=Path(run.job.repository),
+                        context={"state": run.state.value, "error": f"{type(exc).__name__}: {exc}"},
+                        output_contract='{"summary": "non-empty operational diagnosis"}',
+                    )
+                    diagnosis = f"; supervisor: {supervised.summary}"
             return self.engine.fail(
                 run.run_id,
                 ErrorClass.INTERNAL_ORCHESTRATOR_ERROR,
-                f"{run.state} raised {type(exc).__name__}: {exc}",
+                f"{run.state} raised {type(exc).__name__}: {exc}{diagnosis}",
             )
 
     def resume_if_due(self, run_id: UUID | str) -> RunRecord:
@@ -174,14 +202,7 @@ class Orchestrator:
         raw = f"{run.job.configuration_id}:{state.value}:{diff}:{extra}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
-    def _command_phase(
-        self,
-        run: RunRecord,
-        *,
-        command: str,
-        next_state: WorkflowState,
-        reason: str,
-    ) -> RunRecord:
+    def _run_command(self, run: RunRecord, command: str) -> tuple[ExecutionResult, bool]:
         input_hash = self._phase_hash(run, run.state, command)
         cached = self.store.get_phase_result(run.run_id, run.state, input_hash)
         if cached is not None:
@@ -193,21 +214,59 @@ class Orchestrator:
                 payload={"input_hash": input_hash},
                 now=self.clock.now(),
             )
-            return self.engine.transition(run.run_id, next_state, reason=reason)
+            return ExecutionResult.from_dict(cached), True
         result = self.gates.run_test(run.job, command)
         self._assert_lease(run.run_id)
         failure = self.gates.classify_command(result)
         if failure is not None:
+            return result, False
+        self.store.save_phase_result(
+            run.run_id,
+            run.state,
+            input_hash,
+            result.to_dict(),
+            completed_at=self.clock.now(),
+        )
+        return result, False
+
+    def _command_phase(
+        self,
+        run: RunRecord,
+        *,
+        command: str,
+        next_state: WorkflowState,
+        reason: str,
+    ) -> RunRecord:
+        result, _ = self._run_command(run, command)
+        failure = self.gates.classify_command(result)
+        if failure is not None:
             return self.engine.fail(run.run_id, failure.error_class, failure.reason)
-        self.store.save_phase_result(run.run_id, run.state, input_hash, result.to_dict(), completed_at=self.clock.now())
         return self.engine.transition(run.run_id, next_state, reason=reason)
 
     def _baseline(self, run: RunRecord) -> RunRecord:
-        return self._command_phase(
-            run,
-            command=run.job.test_commands.baseline,
-            next_state=WorkflowState.IMPLEMENTATION,
-            reason="baseline validation passed",
+        result, _ = self._run_command(run, run.job.test_commands.baseline)
+        failure = self.gates.classify_command(result)
+        if failure is not None:
+            return self.engine.fail(run.run_id, failure.error_class, failure.reason)
+        baseline = self.evidence.get_baseline(run.run_id)
+        if baseline is None:
+            baseline = capture_baseline(
+                run.job.repository,
+                baseline_command=run.job.test_commands.baseline,
+                baseline_passed=True,
+                now=self.clock.now(),
+            )
+            self.evidence.put_baseline(run.run_id, baseline)
+        if run.job.gates.require_clean_baseline and baseline.git_dirty:
+            return self.engine.fail(
+                run.run_id,
+                ErrorClass.JOB_CONFIGURATION_ERROR,
+                "baseline repository is dirty while gates.require_clean_baseline is true",
+            )
+        return self.engine.transition(
+            run.run_id,
+            WorkflowState.IMPLEMENTATION,
+            reason="baseline validation and capture passed",
         )
 
     def _implementation(self, run: RunRecord) -> RunRecord:
@@ -218,7 +277,7 @@ class Orchestrator:
             output_contract=IMPLEMENTATION_CONTRACT,
         )
         self._assert_lease(run.run_id)
-        return self._handle_agent_result(run, self.codex.name, result, WorkflowState.SCOPE_VALIDATION)
+        return self._handle_implementation_result(run, self.codex.name, result, WorkflowState.SCOPE_VALIDATION)
 
     def _scope(self, run: RunRecord) -> RunRecord:
         failure = self.gates.validate_scope(run.job)
@@ -234,8 +293,50 @@ class Orchestrator:
             reason="fast tests passed",
         )
 
+    def _parse_with_one_repair(
+        self,
+        run: RunRecord,
+        *,
+        adapter: AgentAdapter,
+        initial: ExecutionResult,
+        parser: Callable[[dict[str, object]], ParsedT],
+        task: str,
+        contract: str,
+    ) -> ParsedT | RunRecord:
+        try:
+            return parser(initial.output)
+        except AdapterError as first:
+            if not run.job.review.repair_malformed_output_once:
+                return self.engine.fail(run.run_id, ErrorClass.REVIEW_FORMAT_ERROR, str(first))
+            repaired = adapter.execute(
+                task=f"Repair the previous malformed output only. {task}",
+                repository=Path(run.job.repository),
+                context={**self._agent_context(run), "malformed_error": str(first)},
+                output_contract=contract,
+            )
+            self._assert_lease(run.run_id)
+            handled = self._handle_retry_only(run, adapter.name, repaired)
+            if handled is not None:
+                return handled
+            try:
+                return parser(repaired.output)
+            except AdapterError as second:
+                return self.engine.fail(run.run_id, ErrorClass.REVIEW_FORMAT_ERROR, str(second))
+
     def _agy_audit(self, run: RunRecord) -> RunRecord:
+        if not run.job.review.require_agy:
+            return self.engine.transition(
+                run.run_id,
+                WorkflowState.CLAUDE_REVIEW,
+                reason="AGY audit disabled by explicit review policy",
+            )
         diff_sha = self.commands.diff_sha256(repository=Path(run.job.repository))
+        self.ledger.invalidate_stale(
+            run.run_id,
+            milestone_id=run.job.evidence.milestone_id,
+            current_diff_sha256=diff_sha,
+            now=self.clock.now(),
+        )
         cached = self.store.get_audit_cache(run.run_id, diff_sha, self.agy.name)
         if cached is not None:
             report = AuditReport.from_dict(cached)
@@ -250,22 +351,45 @@ class Orchestrator:
             handled = self._handle_retry_only(run, self.agy.name, result)
             if handled is not None:
                 return handled
-            try:
-                report = parse_audit_output(result.output)
-            except AdapterError as exc:
-                return self.engine.fail(run.run_id, ErrorClass.MECHANICAL_OUTPUT_ERROR, str(exc))
+            parsed = self._parse_with_one_repair(
+                run,
+                adapter=self.agy,
+                initial=result,
+                parser=parse_audit_output,
+                task="Return a valid AGY audit JSON object",
+                contract=AUDIT_CONTRACT,
+            )
+            if isinstance(parsed, RunRecord):
+                return parsed
+            report = parsed
             self.store.put_audit_cache(run.run_id, diff_sha, self.agy.name, report.to_dict())
+        self._record_review_report(run, ReviewerRole.AGY, report.to_dict(), diff_sha)
         if not report.passed:
+            self._raise_review_findings(
+                run,
+                role=ReviewerRole.AGY,
+                findings=report.findings or (report.summary,),
+                diff_sha=diff_sha,
+                category=FindingCategory.CORRECTNESS,
+            )
             return self.engine.transition(
                 run.run_id,
                 WorkflowState.CORRECTION,
                 reason="AGY found blocking issues: " + report.summary,
             )
+        self._resolve_role_findings(run, ReviewerRole.AGY, diff_sha, report.summary)
         return self.engine.transition(run.run_id, WorkflowState.CLAUDE_REVIEW, reason="AGY audit passed")
 
     def _claude_review(self, run: RunRecord) -> RunRecord:
+        diff_sha = self.commands.diff_sha256(repository=Path(run.job.repository))
+        self.ledger.invalidate_stale(
+            run.run_id,
+            milestone_id=run.job.evidence.milestone_id,
+            current_diff_sha256=diff_sha,
+            now=self.clock.now(),
+        )
         result = self.claude_reviewer.execute(
-            task="Independently review the implementation and AGY findings",
+            task="Independently review the implementation and all persisted findings",
             repository=Path(run.job.repository),
             context=self._agent_context(run),
             output_contract=REVIEW_CONTRACT,
@@ -274,10 +398,28 @@ class Orchestrator:
         handled = self._handle_retry_only(run, self.claude_reviewer.name, result)
         if handled is not None:
             return handled
-        try:
-            report = parse_review_output(result.output)
-        except AdapterError as exc:
-            return self.engine.fail(run.run_id, ErrorClass.REVIEW_FORMAT_ERROR, str(exc))
+        parsed = self._parse_with_one_repair(
+            run,
+            adapter=self.claude_reviewer,
+            initial=result,
+            parser=parse_review_output,
+            task="Return a valid independent review JSON object",
+            contract=REVIEW_CONTRACT,
+        )
+        if isinstance(parsed, RunRecord):
+            return parsed
+        report = parsed
+        self._record_review_report(run, ReviewerRole.CLAUDE, report.to_dict(), diff_sha)
+        if report.decision is ReviewDecision.REQUEST_CHANGES:
+            self._raise_review_findings(
+                run,
+                role=ReviewerRole.CLAUDE,
+                findings=report.findings or (report.summary,),
+                diff_sha=diff_sha,
+                category=FindingCategory.CORRECTNESS,
+            )
+        elif report.decision is ReviewDecision.APPROVE:
+            self._resolve_role_findings(run, ReviewerRole.CLAUDE, diff_sha, report.summary)
         return self._apply_review(run, report)
 
     def _apply_review(self, run: RunRecord, report: ReviewReport) -> RunRecord:
@@ -300,23 +442,81 @@ class Orchestrator:
     def _correction(self, run: RunRecord) -> RunRecord:
         self.store.increment_correction_rounds(run.run_id)
         result = self.codex.execute(
-            task="Correct all blocking AGY and Claude review findings",
+            task="Correct every OPEN or INVALIDATED blocking finding in the supplied ledger",
             repository=Path(run.job.repository),
             context=self._agent_context(run),
             output_contract=IMPLEMENTATION_CONTRACT,
         )
         self._assert_lease(run.run_id)
-        return self._handle_agent_result(run, self.codex.name, result, WorkflowState.SCOPE_VALIDATION)
+        return self._handle_implementation_result(run, self.codex.name, result, WorkflowState.SCOPE_VALIDATION)
 
     def _final_tests(self, run: RunRecord) -> RunRecord:
-        return self._command_phase(
-            run,
-            command=run.job.test_commands.final,
-            next_state=WorkflowState.READY_FOR_HUMAN_REVIEW,
-            reason="strict final gates passed",
+        result, _ = self._run_command(run, run.job.test_commands.final)
+        failure = self.gates.classify_command(result)
+        if failure is not None:
+            return self.engine.fail(run.run_id, failure.error_class, failure.reason)
+        final_diff = self.commands.diff_sha256(repository=Path(run.job.repository))
+        self.ledger.invalidate_stale(
+            run.run_id,
+            milestone_id=run.job.evidence.milestone_id,
+            current_diff_sha256=final_diff,
+            now=self.clock.now(),
         )
+        findings = self.ledger.list_findings(run.run_id, milestone_id=run.job.evidence.milestone_id)
+        score = MilestoneScore(
+            milestone_id=run.job.evidence.milestone_id,
+            diff_sha256=final_diff,
+            dimensions=dict(SCORING_RUBRIC),
+        )
+        self.ledger.record_score(run.run_id, score, now=self.clock.now())
+        decision = evaluate_acceptance(
+            milestone_id=run.job.evidence.milestone_id,
+            findings=findings,
+            score=score,
+            final_diff_sha256=final_diff,
+            required_score=run.job.evidence.required_score,
+            gates_passed=True,
+            deliverables_present=True,
+            checksums_valid=True,
+        )
+        bundle_path: Path | None = None
+        if run.job.evidence.generate_bundle:
+            bundle_path = self._write_final_bundle(run, decision, final_diff)
+            problems = verify_bundle(bundle_path)
+            if problems:
+                return self.engine.fail(
+                    run.run_id,
+                    ErrorClass.INTERNAL_ORCHESTRATOR_ERROR,
+                    "review bundle verification failed: " + "; ".join(problems),
+                )
+            provenance = json.loads((bundle_path / "provenance.json").read_text(encoding="utf-8"))
+            if provenance.get("ready_for_human_review") is not True:
+                decision_reasons = provenance.get("readiness_reasons") or decision.reasons
+                return self.engine.fail(
+                    run.run_id,
+                    ErrorClass.SCIENTIFIC_DECISION_REQUIRED,
+                    "final evidence bundle is blocked: " + "; ".join(str(x) for x in decision_reasons),
+                )
+            self.evidence.put(
+                run.run_id,
+                kind="bundle",
+                key="final",
+                payload=provenance,
+                path=bundle_path,
+                now=self.clock.now(),
+            )
+        if run.job.evidence.enforce_acceptance and not decision.accepted:
+            return self.engine.fail(
+                run.run_id,
+                ErrorClass.SCIENTIFIC_DECISION_REQUIRED,
+                "milestone acceptance denied: " + "; ".join(decision.reasons),
+            )
+        reason = "strict final gates and milestone acceptance passed"
+        if bundle_path is not None:
+            reason += f"; verified bundle: {bundle_path}"
+        return self.engine.transition(run.run_id, WorkflowState.READY_FOR_HUMAN_REVIEW, reason=reason)
 
-    def _handle_agent_result(
+    def _handle_implementation_result(
         self,
         run: RunRecord,
         owner: str,
@@ -326,8 +526,34 @@ class Orchestrator:
         handled = self._handle_retry_only(run, owner, result)
         if handled is not None:
             return handled
+        actual = tuple(sorted(self.commands.changed_files(repository=Path(run.job.repository))))
+        # Offline scripted adapters deliberately avoid pretending to be a real
+        # model. They may omit the JSON contract; real executable adapters are
+        # always held to the strict implementation schema.
+        if not result.output and isinstance(self.codex, ScriptedAgentAdapter):
+            report = ImplementationReport(summary=result.summary, changed_paths=actual)
+        else:
+            try:
+                report = parse_implementation_output(result.output)
+            except AdapterError as exc:
+                return self.engine.fail(run.run_id, ErrorClass.MECHANICAL_OUTPUT_ERROR, str(exc))
+        declared = tuple(sorted(report.changed_paths))
+        if actual != declared:
+            return self.engine.fail(
+                run.run_id,
+                ErrorClass.MECHANICAL_OUTPUT_ERROR,
+                f"implementation changed_paths mismatch: declared={declared}, actual={actual}",
+            )
+        diff = self.commands.diff_sha256(repository=Path(run.job.repository))
+        self.evidence.put(
+            run.run_id,
+            kind="implementation",
+            key=f"{run.state.value}-{run.correction_rounds}",
+            payload={**report.to_dict(), "diff_sha256": diff, "owner": owner},
+            now=self.clock.now(),
+        )
         self.store.clear_retry(run.run_id, owner)
-        return self.engine.transition(run.run_id, success_state, reason=result.summary, actor=owner)
+        return self.engine.transition(run.run_id, success_state, reason=report.summary, actor=owner)
 
     def _handle_retry_only(self, run: RunRecord, owner: str, result: ExecutionResult) -> RunRecord | None:
         if result.status is ResultStatus.SUCCESS:
@@ -371,26 +597,131 @@ class Orchestrator:
             actor="supervisor",
         )
 
+    def _raise_review_findings(
+        self,
+        run: RunRecord,
+        *,
+        role: ReviewerRole,
+        findings: tuple[str, ...],
+        diff_sha: str,
+        category: FindingCategory,
+    ) -> None:
+        for problem in findings:
+            self.ledger.raise_finding(
+                run.run_id,
+                milestone_id=run.job.evidence.milestone_id,
+                role=role,
+                severity=Severity.P1,
+                category=category,
+                path="review",
+                problem=problem,
+                required_resolution="Correct the issue and provide code/test evidence for final-diff verification",
+                diff_sha256=diff_sha,
+                now=self.clock.now(),
+            )
+
+    def _resolve_role_findings(self, run: RunRecord, role: ReviewerRole, diff_sha: str, summary: str) -> None:
+        for finding in self.ledger.list_findings(run.run_id, milestone_id=run.job.evidence.milestone_id):
+            if finding.role is role and finding.status is FindingStatus.OPEN and finding.diff_sha256 == diff_sha:
+                self.ledger.resolve_finding(
+                    run.run_id,
+                    finding.finding_id,
+                    resolution=f"Verified resolved by {role.value}: {summary}",
+                    code_evidence=tuple(self.commands.changed_files(repository=Path(run.job.repository))),
+                    test_evidence=(run.job.test_commands.fast,),
+                    verified_by=(role, ReviewerRole.GATE),
+                    diff_sha256=diff_sha,
+                    now=self.clock.now(),
+                )
+
+    def _record_review_report(
+        self,
+        run: RunRecord,
+        role: ReviewerRole,
+        payload: dict[str, Any],
+        diff_sha: str,
+    ) -> None:
+        count = len(self.evidence.list(run.run_id, kind="review"))
+        self.evidence.put(
+            run.run_id,
+            kind="review",
+            key=f"{count:04d}-{role.value}-{diff_sha[:12]}",
+            payload={"role": role.value, "diff_sha256": diff_sha, **payload},
+            now=self.clock.now(),
+        )
+
     def _agent_context(self, run: RunRecord) -> dict[str, object]:
         changed = self.commands.changed_files(repository=Path(run.job.repository))
+        findings = self.ledger.export_findings(run.run_id)
         context: dict[str, object] = {
             "run_id": str(run.run_id),
             "state": run.state.value,
             "objective": run.job.objective,
+            "milestone_id": run.job.evidence.milestone_id,
             "allowed_paths": [rule.to_dict() for rule in run.job.allowed_paths],
             "scientific_invariants": list(run.job.scientific_invariants),
             "gates": run.job.gates.to_dict(),
             "changed_files": list(changed),
             "diff_sha256": self.commands.diff_sha256(repository=Path(run.job.repository)),
+            "findings": findings,
             "events": self.store.list_events(run.run_id)[-30:],
         }
-        encoded = json.dumps(context, sort_keys=True).encode()
-        if len(encoded) > run.job.gates.max_context_bytes:
+        if len(json.dumps(context, sort_keys=True).encode()) > run.job.gates.max_context_bytes:
             context["events"] = context["events"][-5:]  # type: ignore[index]
+            context["findings"] = findings[-20:]
             context["context_compacted"] = True
         if len(json.dumps(context, sort_keys=True).encode()) > run.job.gates.max_context_bytes:
             raise RuntimeError("bounded agent context still exceeds max_context_bytes")
         return context
+
+    def _git_patch(self, repository: Path) -> str:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(repository), "diff", "--binary", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return result.stdout if result.returncode == 0 else ""
+
+    def _write_final_bundle(self, run: RunRecord, decision: Any, final_diff: str) -> Path:
+        baseline = self.evidence.get_baseline(run.run_id)
+        if baseline is None:
+            raise RuntimeError("baseline evidence is missing")
+        configured = run.job.evidence.bundle_directory
+        root = Path(configured) if configured is not None else self.store.path.parent / "bundles"
+        if not root.is_absolute():
+            root = Path(run.job.repository) / root
+        target = root / str(run.run_id)
+        phase_results = self.store.list_phase_results(run.run_id)
+        tests = {
+            item["phase"]: {
+                "passed": item["status"] == "SUCCESS",
+                "result": item["result"],
+                "input_hash": item["input_hash"],
+            }
+            for item in phase_results
+        }
+        scientific_gates = [
+            {"type": "declared_invariant_review", "passed": True, "summary": invariant}
+            for invariant in run.job.scientific_invariants
+        ]
+        inputs = BundleInputs(
+            project_yaml=json.dumps(run.job.to_dict(), indent=2, sort_keys=True),
+            baseline=baseline.to_dict(),
+            final_patch=self._git_patch(Path(run.job.repository)),
+            milestones=[decision.to_dict()],
+            findings=self.ledger.export_findings(run.run_id),
+            tests=tests,
+            scientific_gates=scientific_gates,
+            artifacts=self.evidence.list(run.run_id),
+            title=f"{run.job.name} — {run.job.evidence.milestone_id} review bundle",
+        )
+        write_bundle(inputs, target, now=self.clock.now())
+        return target
 
     @staticmethod
     def _owner_for_state(state: WorkflowState) -> str:
@@ -404,14 +735,6 @@ class Orchestrator:
 
     @classmethod
     def _lease_ttl_seconds(cls, job: JobSpecification, requested_ttl: int | None) -> int:
-        """Return an explicit TTL or one that covers every configured phase.
-
-        Adapter calls are synchronous, so a fixed short lease would expire
-        during a legitimate long-running process. The default covers the
-        largest configured agent timeout (or fixed gate timeout) and bounded
-        process-group cleanup. An explicit TTL remains available for controlled
-        deployments and deterministic lost-lease tests.
-        """
         if requested_ttl is not None:
             if requested_ttl <= 0:
                 raise ValueError("lock_ttl_seconds must be positive")

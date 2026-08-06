@@ -1,0 +1,59 @@
+project_id: example-project
+title: Example continuous project
+mission: Complete every milestone with verified evidence and no conversational questions
+definition_of_done:
+  - every milestone is accepted
+  - the final review bundle verifies
+non_goals:
+  - automatic merge
+autonomy:
+  mode: continuous
+  ask_questions: false
+  ambiguity_policy: safest_reversible_assumption
+  destructive_actions: deny
+  overwrite_policy: version_outputs
+  human_gate: release_only
+milestones:
+  - milestone_id: M05
+    title: Final M05 delivery
+    objective: Implement, test, review and package the requested M05 scope
+    dependencies: []
+    job:
+      name: example-development-job
+      objective: Implement the assigned issue and leave it ready for human review
+      repository: ..
+      allowed_paths:
+        - kind: tree
+          path: src
+        - kind: tree
+          path: tests
+        - kind: file
+          path: README.md
+      test_commands:
+        baseline: pytest -q
+        fast: pytest -q
+        final: pytest -q
+        # Strings are argv-parsed by default. Set allow_shell: true only for trusted
+        # shell syntax such as pipes or &&.
+        allow_shell: false
+      retry_policy:
+        delays_seconds: [60, 300, 900, 1800, 3600]
+        max_attempts: 8
+        jitter_fraction: 0.1
+      gates:
+        allow_network: false
+        allow_git_writes: false
+        max_changed_files: 200
+        max_context_bytes: 2000000
+      review:
+        max_correction_rounds: 3
+        require_agy: true
+      scientific_invariants: []
+      # Real adapters use argv arrays and communicate through
+      # DEV_AUTOPILOT_CONTEXT_FILE / DEV_AUTOPILOT_OUTPUT_FILE.
+      agents: {}
+      evidence:
+        milestone_id: M05
+        required_score: 90
+        generate_bundle: true
+        enforce_acceptance: true

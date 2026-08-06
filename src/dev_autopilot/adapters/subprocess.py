@@ -9,6 +9,7 @@ import shlex
 import signal
 import subprocess
 import tempfile
+import time
 from contextlib import suppress
 from pathlib import Path
 
@@ -126,29 +127,49 @@ class ExecutableAgentAdapter:
     ExecutionResult.output's phase-specific contract.
     """
 
+    _SECURITY_POLL_SECONDS = 0.1
+
     def __init__(self, name: str, settings: AgentCommand) -> None:
         self.name = name
         self.settings = settings
 
     @staticmethod
-    def _git_metadata(repository: Path) -> tuple[str, str, str]:
-        def run(*args: str) -> str:
-            completed = subprocess.run(["git", *args], cwd=repository, text=True, capture_output=True, timeout=30, check=False)
-            return completed.stdout if completed.returncode == 0 else ""
+    def _git_run(repository: Path, *args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        return completed.stdout if completed.returncode == 0 else ""
 
-        index_path = run("rev-parse", "--git-path", "index").strip()
-        index = Path(index_path)
-        if not index.is_absolute():
-            index = repository / index
-        index_hash = hashlib.sha256(index.read_bytes()).hexdigest() if index.is_file() else ""
+    @classmethod
+    def _git_index_path(cls, repository: Path) -> Path:
+        raw = cls._git_run(repository, "rev-parse", "--git-path", "index").strip()
+        index = Path(raw)
+        return index if index.is_absolute() else repository / index
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
+
+    @classmethod
+    def _git_metadata(cls, repository: Path) -> tuple[str, str, str]:
+        index_hash = cls._file_sha256(cls._git_index_path(repository))
         # JSON gives a stable, unambiguous representation even when a ref name
         # contains unusual whitespace.
-        refs = tuple(sorted(line for line in run("show-ref", "--head").splitlines() if line))
-        return run("rev-parse", "HEAD").strip(), json.dumps(refs, separators=(",", ":")), index_hash
+        refs = tuple(sorted(line for line in cls._git_run(repository, "show-ref", "--head").splitlines() if line))
+        return (
+            cls._git_run(repository, "rev-parse", "HEAD").strip(),
+            json.dumps(refs, separators=(",", ":")),
+            index_hash,
+        )
 
     @staticmethod
     def _terminate_group(process: subprocess.Popen[str]) -> None:
-        """Boundedly terminate the complete session, including descendants."""
+        """Boundedly terminate the complete session, descendants and pipes."""
         try:
             os.killpg(process.pid, signal.SIGTERM)
             process.wait(timeout=2)
@@ -157,6 +178,13 @@ class ExecutableAgentAdapter:
                 os.killpg(process.pid, signal.SIGKILL)
             with suppress(subprocess.TimeoutExpired):
                 process.wait(timeout=2)
+        finally:
+            # TimeoutExpired carries any already-read output. Closing the pipe
+            # objects here prevents descriptor leaks after a killed process.
+            for stream in (process.stdout, process.stderr, process.stdin):
+                if stream is not None:
+                    with suppress(OSError):
+                        stream.close()
 
     def execute(
         self,
@@ -169,6 +197,7 @@ class ExecutableAgentAdapter:
         gates = context.get("gates", {})
         allow_git_writes = bool(gates.get("allow_git_writes", False)) if isinstance(gates, dict) else False
         before_git = None if allow_git_writes else self._git_metadata(repository)
+        protected_index = None if before_git is None else self._git_index_path(repository)
         payload = {"task": task, "context": context, "output_contract": output_contract}
         with tempfile.TemporaryDirectory(prefix="dev-autopilot-") as temp_dir:
             temp = Path(temp_dir)
@@ -183,34 +212,53 @@ class ExecutableAgentAdapter:
                     "DEV_AUTOPILOT_REPOSITORY": str(repository),
                 }
             )
-            try:
-                process = subprocess.Popen(
-                    list(self.settings.command),
-                    cwd=repository,
-                    env=env,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    start_new_session=True,
-                )
-                stdout, stderr = process.communicate(timeout=self.settings.timeout_seconds)
-            except subprocess.TimeoutExpired as exc:
-                self._terminate_group(process)
-                stdout = _text(exc.stdout)
-                stderr = _text(exc.stderr)
-                if before_git is not None and self._git_metadata(repository) != before_git:
+            process = subprocess.Popen(
+                list(self.settings.command),
+                cwd=repository,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+            )
+            deadline = time.monotonic() + self.settings.timeout_seconds
+            stdout = ""
+            stderr = ""
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._terminate_group(process)
+                    if before_git is not None and self._git_metadata(repository) != before_git:
+                        return ExecutionResult(
+                            status=ResultStatus.SECURITY,
+                            summary=f"{self.name} modified git metadata while git writes were disabled",
+                            stdout=stdout,
+                            stderr=stderr,
+                        )
                     return ExecutionResult(
-                        status=ResultStatus.SECURITY,
-                        summary=f"{self.name} modified git metadata while git writes were disabled",
+                        status=ResultStatus.TIMEOUT,
+                        summary=f"{self.name} timed out",
                         stdout=stdout,
                         stderr=stderr,
                     )
-                return ExecutionResult(
-                    status=ResultStatus.TIMEOUT,
-                    summary=f"{self.name} timed out",
-                    stdout=stdout,
-                    stderr=stderr,
-                )
+                try:
+                    stdout, stderr = process.communicate(timeout=min(self._SECURITY_POLL_SECONDS, remaining))
+                    break
+                except subprocess.TimeoutExpired as exc:
+                    stdout = _text(exc.stdout)
+                    stderr = _text(exc.stderr)
+                    if (
+                        before_git is not None
+                        and protected_index is not None
+                        and self._file_sha256(protected_index) != before_git[2]
+                    ):
+                        self._terminate_group(process)
+                        return ExecutionResult(
+                            status=ResultStatus.SECURITY,
+                            summary=f"{self.name} modified git metadata while git writes were disabled",
+                            stdout=stdout,
+                            stderr=stderr,
+                        )
             completed = subprocess.CompletedProcess(list(self.settings.command), process.returncode, stdout, stderr)
             if before_git is not None and self._git_metadata(repository) != before_git:
                 return ExecutionResult(

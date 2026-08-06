@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "JobInput": {
+      "additionalProperties": false,
+      "properties": {
+        "key_prefix": {
+          "minLength": 1,
+          "title": "Key Prefix",
+          "type": "string"
+        },
+        "local_name": {
+          "minLength": 1,
+          "title": "Local Name",
+          "type": "string"
+        },
+        "mount_mode": {
+          "$ref": "#/$defs/MountMode",
+          "default": "reassemble"
+        }
+      },
+      "required": [
+        "key_prefix",
+        "local_name"
+      ],
+      "title": "JobInput",
+      "type": "object"
+    },
+    "MountMode": {
+      "enum": [
+        "reassemble",
+        "stream",
+        "direct"
+      ],
+      "title": "MountMode",
+      "type": "string"
+    },
+    "ResourceClass": {
+      "enum": [
+        "cpu",
+        "high_ram",
+        "gpu",
+        "tpu",
+        "storage"
+      ],
+      "title": "ResourceClass",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "checkpoint_interval_seconds": {
+      "default": 300,
+      "exclusiveMinimum": 0,
+      "title": "Checkpoint Interval Seconds",
+      "type": "integer"
+    },
+    "entrypoint": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Entrypoint",
+      "type": "array"
+    },
+    "env_allowlist": {
+      "default": [],
+      "items": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+        "type": "string"
+      },
+      "title": "Env Allowlist",
+      "type": "array"
+    },
+    "inputs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/JobInput"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "job_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "max_attempts": {
+      "default": 4,
+      "exclusiveMinimum": 0,
+      "title": "Max Attempts",
+      "type": "integer"
+    },
+    "milestone_id": {
+      "anyOf": [
+        {
+          "pattern": "^M\\d{2,}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Milestone Id"
+    },
+    "minimum_free_disk_bytes": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Minimum Free Disk Bytes",
+      "type": "integer"
+    },
+    "minimum_gpu_memory_bytes": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Minimum Gpu Memory Bytes",
+      "type": "integer"
+    },
+    "minimum_ram_bytes": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Minimum Ram Bytes",
+      "type": "integer"
+    },
+    "output_part_size_bytes": {
+      "default": 95000000,
+      "exclusiveMinimum": 0,
+      "title": "Output Part Size Bytes",
+      "type": "integer"
+    },
+    "output_prefix": {
+      "minLength": 1,
+      "title": "Output Prefix",
+      "type": "string"
+    },
+    "output_split_threshold_bytes": {
+      "default": 1073741824,
+      "exclusiveMinimum": 0,
+      "title": "Output Split Threshold Bytes",
+      "type": "integer"
+    },
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "resource_class": {
+      "$ref": "#/$defs/ResourceClass",
+      "default": "cpu"
+    },
+    "timeout_seconds": {
+      "default": 36000,
+      "exclusiveMinimum": 0,
+      "title": "Timeout Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "job_id",
+    "project_id",
+    "entrypoint",
+    "output_prefix"
+  ],
+  "title": "WorkerJob",
+  "type": "object"
+}

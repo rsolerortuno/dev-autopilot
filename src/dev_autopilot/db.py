@@ -8,7 +8,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from types import TracebackType
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from dev_autopilot.errors import ErrorClass, PersistenceError, RunLockError
@@ -118,6 +119,22 @@ def _required_dt(value: str | None, field: str) -> datetime:
     return parsed
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """Commit/rollback and close when used as a context manager."""
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> Literal[False]:
+        try:
+            super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+        return False
+
+
 class SQLiteStore:
     """The single source of truth for orchestration state."""
 
@@ -127,7 +144,7 @@ class SQLiteStore:
         self._initialize()
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+        connection = sqlite3.connect(self.path, timeout=30, isolation_level=None, factory=_ClosingConnection)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA journal_mode = WAL")
@@ -356,6 +373,25 @@ class SQLiteStore:
                 (str(run_id), phase.value, input_hash),
             ).fetchone()
         return None if row is None else json.loads(row["result_json"])
+
+    def list_phase_results(self, run_id: UUID | str) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT phase,input_hash,status,result_json,started_at,completed_at
+                   FROM phase_results WHERE run_id=? ORDER BY completed_at,phase""",
+                (str(run_id),),
+            ).fetchall()
+        return [
+            {
+                "phase": row["phase"],
+                "input_hash": row["input_hash"],
+                "status": row["status"],
+                "result": json.loads(row["result_json"]),
+                "started_at": row["started_at"],
+                "completed_at": row["completed_at"],
+            }
+            for row in rows
+        ]
 
     def set_retry(self, run_id: UUID | str, retry: RetryState, *, now: datetime | None = None) -> None:
         timestamp = now or datetime.now(UTC)

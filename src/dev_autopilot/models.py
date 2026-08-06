@@ -237,6 +237,25 @@ class ReviewPolicy(ContractModel):
     require_agy: bool = True
 
 
+class EvidencePolicy(ContractModel):
+    """M02/M03 evidence and milestone acceptance policy."""
+
+    milestone_id: Annotated[str, StringConstraints(pattern=r"^M\d{2,}$")] = "M05"
+    required_score: Annotated[int, Field(ge=0, le=100)] = 90
+    generate_bundle: bool = True
+    enforce_acceptance: bool = True
+    bundle_directory: str | None = None
+
+    @field_validator("bundle_directory")
+    @classmethod
+    def validate_bundle_directory(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value.strip() or "\x00" in value:
+            raise ValueError("bundle_directory must be a non-empty path")
+        return value
+
+
 class JobSpecification(ContractModel):
     name: NonEmptyString
     objective: NonEmptyString
@@ -247,6 +266,7 @@ class JobSpecification(ContractModel):
     retry_policy: RetryPolicySpec = RetryPolicySpec()
     gates: GatePolicy = GatePolicy()
     review: ReviewPolicy = ReviewPolicy()
+    evidence: EvidencePolicy = EvidencePolicy()
     scientific_invariants: tuple[str, ...] = ()
 
     @field_validator("allowed_paths", "scientific_invariants", mode="before")
@@ -367,6 +387,30 @@ class ExecutionResult(ContractModel):
     stderr: str = ""
     exit_code: int | None = None
     quota_reset_at: datetime | None = None
+
+
+class ImplementationReport(ContractModel):
+    """Strict implementer output, cross-checked against Git by the orchestrator."""
+
+    summary: NonEmptyString
+    changed_paths: tuple[str, ...]
+    tests_run: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    unresolved_questions: tuple[str, ...] = ()
+
+    @field_validator("changed_paths", "tests_run", "assumptions", "unresolved_questions", mode="before")
+    @classmethod
+    def freeze_report_sequences(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("changed_paths")
+    @classmethod
+    def validate_changed_paths(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for path in value:
+            _normalize_repository_path(path)
+        if len(set(value)) != len(value):
+            raise ValueError("changed_paths must not contain duplicates")
+        return value
 
 
 class ReviewDecision(StrEnum):

@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dev-autopilot"
-version = "0.1.1"
-description = "Persistent, auditable multi-agent development orchestrator"
+version = "0.5.0"
+description = "Persistent, auditable multi-agent development orchestrator for scientific software"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-authors = [{ name = "Dev Autopilot contributors" }]
+authors = [{ name = "Rafael Soler Ortuño" }]
+keywords = ["agents", "bioinformatics", "colab", "orchestration", "reproducibility", "scientific-software"]
 dependencies = [
     "pydantic>=2.10,<3",
     "PyYAML>=6,<7",
@@ -23,6 +24,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[project.urls]
+Homepage = "https://github.com/rsolerortuno/dev-autopilot"
+Repository = "https://github.com/rsolerortuno/dev-autopilot"
+Issues = "https://github.com/rsolerortuno/dev-autopilot/issues"
+
 [project.optional-dependencies]
 dev = [
     "build>=1.2",
@@ -30,8 +36,14 @@ dev = [
     "wheel>=0.44",
     "mypy>=1.11",
     "pytest>=8",
+    "pytest-cov>=6",
     "ruff>=0.8",
     "types-PyYAML>=6",
+]
+drive = [
+    "google-api-python-client>=2.100",
+    "google-auth>=2.30",
+    "google-auth-oauthlib>=1.2",
 ]
 
 [project.scripts]
@@ -45,7 +57,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-dev_autopilot = ["py.typed", "job-specification.schema.json"]
+dev_autopilot = ["py.typed", "*.schema.json"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
@@ -69,4 +81,8 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "yaml"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["googleapiclient.*", "google.*", "google_auth_oauthlib.*"]
 ignore_missing_imports = true

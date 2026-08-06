@@ -1,85 +1,134 @@
-# Dev Autopilot architecture
+# Dev Autopilot M05 architecture
 
 ## Decision summary
 
-Dev Autopilot is a Python state machine whose durable source of truth is a
-versioned SQLite database. Agent processes are replaceable adapters. They do not
-own state transitions, retry counters, final approval or merge authority.
+Dev Autopilot 0.5.0 has two cooperating planes:
 
-The package is divided into six dependency layers:
+1. a persistent control plane for project milestones, repository work, review,
+   acceptance, and evidence;
+2. ephemeral workers for storage-heavy, high-RAM, GPU, or TPU jobs.
 
-1. `models`, `states`, `errors`: immutable contracts and stable serialized values.
-2. `db`, `events`: transactions, migrations, append-only history, locks and caches.
-3. `engine`, `retries`: legal transitions and persistent recovery decisions.
-4. `adapters`, `gates`, `review`: external execution and fail-closed validation.
-5. `orchestrator`: idempotent phase handlers and the complete review loop.
-6. `cli`, `legacy`: operator interface and compatibility boundary.
+SQLite is the local source of truth for control-plane state. A `StorageBackend`
+provides local or Google Drive object storage for large inputs, worker queues,
+checkpoints, and outputs.
 
-Lower layers never import higher layers.
+## Control-plane layers
 
-## Persistence
+1. **Contracts** — immutable Pydantic models and generated JSON schemas.
+2. **Persistence** — SQLite runs, events, retries, locks, evidence, findings,
+   project milestones, and assumptions.
+3. **State engine** — legal fail-closed phase transitions.
+4. **Execution adapters** — deterministic commands and replaceable agents.
+5. **Review and gates** — scope, tests, strict output parsing, diff-bound audit,
+   and independent review.
+6. **Acceptance and bundle** — milestone score, blocker evaluation, baseline,
+   manifests, report, and complete integrity verification.
+7. **Project runner** — topological milestone execution under an immutable
+   no-questions charter.
 
-Schema version 1 contains:
+Lower layers do not own approval authority.
 
-- `runs`: exactly one current state, optional resume state, failure and approval data;
-- `events`: ordered append-only journal protected by update/delete triggers;
-- `phase_results`: successful idempotency records keyed by phase and input SHA-256;
-- `retries`: independent persistent counters and deadlines per adapter owner;
-- `run_locks`: expiring exclusive run ownership;
-- `artifacts`: immutable artifact manifests;
-- `audit_cache`: AGY reports keyed by the reviewed diff SHA-256;
-- `schema_migrations`: applied schema versions.
+## M00/M01 project execution
 
-Mutating operations use `BEGIN IMMEDIATE`. State writes compare the expected
-current state inside the same transaction, so stale supervisors fail closed.
+A `ProjectCharter` contains one immutable mission, definition of done, non-goals,
+a fixed autonomy policy, and a DAG of milestones. `ask_questions` is a literal
+false value, not a runtime preference.
 
-## Authority
+The continuous runner selects the next milestone whose dependencies are
+accepted. A stopped run creates a persisted blocker and `ACTION_REQUIRED.md`.
+The original project is never silently rewritten. A later resume continues the
+same milestone run.
 
-- Codex may change only configured product paths. It cannot review or approve.
-- AGY is read-only and adversarial. Its report is mandatory by default.
-- Claude reviewer is read-only and owns the implementation review decision.
-- Claude supervisor is optional and operational only; it cannot edit product code.
-- The human owns initial scientific scope, final approval and any later Git merge.
+## M02 findings
 
-## Recovery
+Audit and review reports are persisted with:
 
-Retryable quota, timeout and agent failures create a durable `RetryState`. The
-backoff sequence is configurable, survives restarts, uses deterministic jitter
-and honors a later explicit quota reset. `watch` resumes a due run without
-resetting its attempt count.
+- milestone and reviewer role;
+- exact diff SHA-256;
+- decision and full point list;
+- severity and blocking status;
+- evidence and required resolution;
+- resolution evidence and verifier identities.
 
-Every pause stores `resume_state`. Every terminal failure stores a non-empty
-reason and stable `ErrorClass`. A run lock prevents concurrent supervisors.
-Leases are atomically renewed before each phase and must still be live and owned
-by the same token after external execution before its result is persisted. By
-default, a lease is the largest configured agent timeout or gate timeout, plus
-60 seconds for bounded process cleanup (with a 300-second minimum). This lets a
-configured long-running agent finish without the supervisor losing ownership
-mid-call. Callers may explicitly provide a positive TTL for controlled
-deployments. An expired lease is never resurrected: a crashed supervisor can be
-taken over after expiry, while a supervisor that loses ownership stops
-fail-closed without writing a transition.
+P0/P1 findings that are open, invalidated, or attached to a superseded diff block
+acceptance. Model reconstruction validates every state update.
 
-## Idempotency and audit cache
+## M03 baseline and bundle
 
-A deterministic phase input hash combines configuration identity, workflow
-state, command and repository diff identity. Successful deterministic phases are
-reused only while that hash is unchanged. AGY reports are cached only for the
-exact diff SHA-256; any source change invalidates the cached audit.
+Baseline capture records:
 
-## Security defaults
+- current commit and branch;
+- stable tracked and untracked content hashes;
+- status and dependency/environment digests;
+- timestamp and repository path.
 
-- Network-backed real agents require explicit `gates.allow_network: true`.
-- Git writes default to false. Agent execution snapshots HEAD, the complete ref
-  listing, and the actual index returned by `git rev-parse --git-path index`, so
-  linked worktrees are protected too; mutation is a security violation.
-- Agent and local command processes run in a dedicated session. On timeout the
-  whole process group receives bounded TERM then KILL cleanup; Git metadata is
-  checked after cleanup, and a security mutation takes precedence over timeout.
-- Test commands use argv execution by default. Shell evaluation requires the
-  persisted `test_commands.allow_shell: true` opt-in.
-- Scope validation rejects every changed path not matched by an explicit file,
-  tree or root-anchored glob rule.
-- The supervisor never stages, commits, pushes, tags or merges.
-- Context is passed through bounded temporary files and compacted when necessary.
-- Tests use fake agents and require no network or subscription.
+One validated acceptance decision drives both the machine result and HTML
+verdict. The bundle manifest includes the HTML report. Verification recomputes
+all file digests and the folded bundle digest, so the human-facing report cannot
+be changed independently.
+
+## M04 storage
+
+`StorageBackend` supports bounded range reads, streaming file upload, strict
+append, listing, identity, checksums, and independent clients for heartbeat
+threads.
+
+The splitter:
+
+- never modifies the source;
+- validates source identity before and after processing;
+- writes a bounded temporary part;
+- uploads and verifies each part;
+- reuses only verified parts after restart;
+- records per-part and whole-file SHA-256;
+- fails on a zero-progress read or identity change.
+
+Reassembly validates every part while writing to a temporary destination and
+atomically replaces the final path only after whole-file verification.
+
+The Drive backend separates read resolution from folder creation, recursively
+lists keys, uses range reads for hashing, and uses resumable Google media upload
+sessions for files.
+
+## M05 queue and worker
+
+Queue records live under:
+
+```text
+devautopilot/
+├── queues/<resource>/
+├── running/
+├── checkpoints/
+├── completed/
+├── failed/
+└── blocked/
+```
+
+A claim includes an owner token, random fencing token, attempt number, and lease
+expiry. The owner must prove the current fencing token before heartbeat,
+checkpoint, failure, blocking, or completion.
+
+Workers heartbeat for the complete job lifetime, including input staging and
+output upload. Checkpoint sequences are monotonic. The watchdog requeues expired
+jobs until `max_attempts` is reached. Every output is written below an
+attempt-and-fence namespace; a stale worker may finish computing but cannot
+publish a terminal result or overwrite a newer attempt.
+
+Drive provides last-write-wins objects rather than database transactions. The
+system therefore uses at-least-once semantics plus fencing and idempotent output
+publication, not an unsupported exactly-once claim.
+
+## Security boundaries
+
+- no autonomous Git stage, commit, push, tag, release, or merge;
+- Git HEAD, refs, and actual worktree index protected when writes are disabled;
+- argv execution by default; shell execution requires explicit trust;
+- process groups terminated on timeout;
+- repository paths and worker local paths reject traversal;
+- workers receive an environment allowlist rather than the complete host env;
+- source identities and artifact checksums are verified;
+- report and bundle integrity is fail-closed;
+- secrets are not stored in Drive.
+
+The local process runtime is not a full sandbox. Container isolation is outside
+M05 and is documented as a remaining limitation.

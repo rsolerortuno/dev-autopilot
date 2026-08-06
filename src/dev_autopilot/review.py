@@ -1,27 +1,35 @@
-"""Strict audit and review output parsing."""
+"""Strict implementation, audit and review output parsing."""
 
 from __future__ import annotations
 
 import json
+from typing import TypeVar
 
 from pydantic import ValidationError
 
 from dev_autopilot.errors import AdapterError
-from dev_autopilot.models import AuditReport, ReviewReport
+from dev_autopilot.models import AuditReport, ContractModel, ImplementationReport, ReviewReport
+
+ReportT = TypeVar("ReportT", bound=ContractModel)
+
+
+def _parse(model: type[ReportT], output: dict[str, object], label: str) -> ReportT:
+    try:
+        return model.model_validate_json(json.dumps(output))
+    except ValidationError as exc:
+        raise AdapterError(f"invalid {label} output: {exc}") from exc
+
+
+def parse_implementation_output(output: dict[str, object]) -> ImplementationReport:
+    return _parse(ImplementationReport, output, "implementation")
 
 
 def parse_audit_output(output: dict[str, object]) -> AuditReport:
-    try:
-        return AuditReport.model_validate_json(json.dumps(output))
-    except ValidationError as exc:
-        raise AdapterError(f"invalid AGY audit output: {exc}") from exc
+    return _parse(AuditReport, output, "AGY audit")
 
 
 def parse_review_output(output: dict[str, object]) -> ReviewReport:
-    try:
-        return ReviewReport.model_validate_json(json.dumps(output))
-    except ValidationError as exc:
-        raise AdapterError(f"invalid Claude review output: {exc}") from exc
+    return _parse(ReviewReport, output, "Claude review")
 
 
 AUDIT_CONTRACT = """Write JSON to DEV_AUTOPILOT_OUTPUT_FILE:
@@ -33,4 +41,5 @@ REVIEW_CONTRACT = """Write JSON to DEV_AUTOPILOT_OUTPUT_FILE:
 
 IMPLEMENTATION_CONTRACT = """Modify only authorized repository paths, run no git
 write operations, and write JSON to DEV_AUTOPILOT_OUTPUT_FILE:
-{"summary": non-empty string, "changed_paths": [strings]}"""
+{"summary": non-empty string, "changed_paths": [repo-relative strings],
+ "tests_run": [strings], "assumptions": [strings], "unresolved_questions": [strings]}"""
