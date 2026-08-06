@@ -1,0 +1,22 @@
+{
+  "job_id": "J-M05-DEMO",
+  "project_id": "P-M05-DEMO",
+  "milestone_id": "M05",
+  "resource_class": "cpu",
+  "entrypoint": [
+    "python",
+    "-c",
+    "from pathlib import Path; from dev_autopilot.worker.checkpoint import save_progress; Path('outputs').mkdir(exist_ok=True); save_progress({'step': 1}); Path('outputs/result.txt').write_text('M05 complete\\n', encoding='utf-8')"
+  ],
+  "inputs": [],
+  "output_prefix": "projects/P-M05-DEMO/outputs",
+  "checkpoint_interval_seconds": 30,
+  "timeout_seconds": 1800,
+  "max_attempts": 4,
+  "env_allowlist": [],
+  "output_split_threshold_bytes": 1073741824,
+  "output_part_size_bytes": 95000000,
+  "minimum_free_disk_bytes": 104857600,
+  "minimum_ram_bytes": 0,
+  "minimum_gpu_memory_bytes": 0
+}

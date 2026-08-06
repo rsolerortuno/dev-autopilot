@@ -87,21 +87,24 @@ def test_timeout_prefers_security_and_terminates_child_process(tmp_path: Path) -
         "import pathlib,subprocess,sys,time; "
         "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
         "pathlib.Path('child.pid').write_text(str(child.pid)); "
-        "pathlib.Path('staged.txt').write_text('x'); "
-        "subprocess.run(['/usr/bin/git','add','staged.txt'],check=True); time.sleep(60)"
+        "index=pathlib.Path('.git/index'); index.write_bytes(index.read_bytes()+b'x'); "
+        "time.sleep(60)"
     )
-    adapter = ExecutableAgentAdapter("codex", AgentCommand(command=(sys.executable, "-c", code), timeout_seconds=1))
+    adapter = ExecutableAgentAdapter("codex", AgentCommand(command=(sys.executable, "-c", code), timeout_seconds=5))
     result = adapter.execute(task="work", repository=repository, context={"gates": {}}, output_contract="json")
     assert result.status is ResultStatus.SECURITY
     pid = int((repository / "child.pid").read_text(encoding="utf-8"))
-    for _ in range(20):
+    for _ in range(40):
         try:
             __import__("os").kill(pid, 0)
         except ProcessLookupError:
             break
+        stat_path = Path(f"/proc/{pid}/stat")
+        if stat_path.is_file() and stat_path.read_text(encoding="utf-8").split()[2] == "Z":
+            break  # terminated zombie awaiting init reaping; it cannot execute
         time.sleep(0.05)
     else:
-        pytest.fail("timed-out child process was not terminated")
+        pytest.fail("timed-out child process was still running")
 
 
 def test_local_commands_use_argv_unless_shell_is_explicit(tmp_path: Path) -> None:

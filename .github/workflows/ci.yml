@@ -11,20 +11,59 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: ${{ matrix.python-version }}
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e '.[dev]'
-      - run: pytest -q
-      - run: ruff check .
-      - run: ruff format --check .
-      - run: mypy
-      - run: python -m build --no-isolation
-      - run: python -m venv /tmp/dev-autopilot-wheel
-      - run: /tmp/dev-autopilot-wheel/bin/pip install dist/*.whl
-      - run: /tmp/dev-autopilot-wheel/bin/python -c "import dev_autopilot"
+          cache: pip
+      - name: Install package and validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,drive]'
+      - name: Validate schemas and notebook JSON
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in sorted(Path('src/dev_autopilot').glob('*.schema.json')):
+              json.loads(path.read_text(encoding='utf-8'))
+          json.loads(Path('notebooks/dev_autopilot_colab_worker.ipynb').read_text(encoding='utf-8'))
+          PY
+      - name: Test with coverage
+        run: pytest --cov=dev_autopilot --cov-report=xml --cov-report=term --cov-fail-under=80 -q
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
+      - name: Strict mypy
+        run: mypy
+      - name: Build distributions
+        run: python -m build --no-isolation
+      - name: Fresh-wheel smoke test
+        run: |
+          python -m venv /tmp/dev-autopilot-wheel
+          /tmp/dev-autopilot-wheel/bin/python -m pip install --upgrade pip
+          /tmp/dev-autopilot-wheel/bin/python -m pip install dist/*.whl
+          /tmp/dev-autopilot-wheel/bin/dev-autopilot --help
+          /tmp/dev-autopilot-wheel/bin/python -c "import dev_autopilot; assert dev_autopilot.__version__ == '0.5.0'"
+          /tmp/dev-autopilot-wheel/bin/python -m pip check
+      - name: Reject whitespace errors
+        run: git diff --check
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip pip-audit
+      - run: python -m pip install '.[drive]'
+      - run: pip-audit

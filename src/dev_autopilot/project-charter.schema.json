@@ -75,6 +75,49 @@
       "title": "AgentSettings",
       "type": "object"
     },
+    "AutonomyPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "ambiguity_policy": {
+          "const": "safest_reversible_assumption",
+          "default": "safest_reversible_assumption",
+          "title": "Ambiguity Policy",
+          "type": "string"
+        },
+        "ask_questions": {
+          "const": false,
+          "default": false,
+          "title": "Ask Questions",
+          "type": "boolean"
+        },
+        "destructive_actions": {
+          "const": "deny",
+          "default": "deny",
+          "title": "Destructive Actions",
+          "type": "string"
+        },
+        "human_gate": {
+          "const": "release_only",
+          "default": "release_only",
+          "title": "Human Gate",
+          "type": "string"
+        },
+        "mode": {
+          "const": "continuous",
+          "default": "continuous",
+          "title": "Mode",
+          "type": "string"
+        },
+        "overwrite_policy": {
+          "const": "version_outputs",
+          "default": "version_outputs",
+          "title": "Overwrite Policy",
+          "type": "string"
+        }
+      },
+      "title": "AutonomyPolicy",
+      "type": "object"
+    },
     "EvidencePolicy": {
       "additionalProperties": false,
       "description": "M02/M03 evidence and milestone acceptance policy.",
@@ -192,6 +235,163 @@
       "title": "GlobPathRule",
       "type": "object"
     },
+    "JobSpecification": {
+      "additionalProperties": false,
+      "properties": {
+        "agents": {
+          "$ref": "#/$defs/AgentSettings",
+          "default": {
+            "agy": null,
+            "claude_reviewer": null,
+            "claude_supervisor": null,
+            "codex": null
+          }
+        },
+        "allowed_paths": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "file": "#/$defs/FilePathRule",
+                "glob": "#/$defs/GlobPathRule",
+                "tree": "#/$defs/TreePathRule"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/FilePathRule"
+              },
+              {
+                "$ref": "#/$defs/TreePathRule"
+              },
+              {
+                "$ref": "#/$defs/GlobPathRule"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Allowed Paths",
+          "type": "array"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidencePolicy",
+          "default": {
+            "bundle_directory": null,
+            "enforce_acceptance": true,
+            "generate_bundle": true,
+            "milestone_id": "M05",
+            "required_score": 90
+          }
+        },
+        "gates": {
+          "$ref": "#/$defs/GatePolicy",
+          "default": {
+            "allow_git_writes": false,
+            "allow_network": false,
+            "max_changed_files": 200,
+            "max_context_bytes": 2000000,
+            "require_clean_baseline": false
+          }
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "objective": {
+          "minLength": 1,
+          "title": "Objective",
+          "type": "string"
+        },
+        "repository": {
+          "minLength": 1,
+          "title": "Repository",
+          "type": "string"
+        },
+        "retry_policy": {
+          "$ref": "#/$defs/RetryPolicySpec",
+          "default": {
+            "delays_seconds": [
+              60,
+              300,
+              900,
+              1800,
+              3600
+            ],
+            "jitter_fraction": 0.1,
+            "max_attempts": 8
+          }
+        },
+        "review": {
+          "$ref": "#/$defs/ReviewPolicy",
+          "default": {
+            "max_correction_rounds": 3,
+            "repair_malformed_output_once": true,
+            "require_agy": true
+          }
+        },
+        "scientific_invariants": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Scientific Invariants",
+          "type": "array"
+        },
+        "test_commands": {
+          "$ref": "#/$defs/TestCommands"
+        }
+      },
+      "required": [
+        "name",
+        "objective",
+        "repository",
+        "allowed_paths",
+        "test_commands"
+      ],
+      "title": "JobSpecification",
+      "type": "object"
+    },
+    "ProjectMilestone": {
+      "additionalProperties": false,
+      "properties": {
+        "dependencies": {
+          "default": [],
+          "items": {
+            "pattern": "^M\\d{2,}$",
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "job": {
+          "$ref": "#/$defs/JobSpecification"
+        },
+        "milestone_id": {
+          "pattern": "^M\\d{2,}$",
+          "title": "Milestone Id",
+          "type": "string"
+        },
+        "objective": {
+          "minLength": 1,
+          "title": "Objective",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "milestone_id",
+        "title",
+        "objective",
+        "job"
+      ],
+      "title": "ProjectMilestone",
+      "type": "object"
+    },
     "RetryPolicySpec": {
       "additionalProperties": false,
       "properties": {
@@ -304,117 +504,65 @@
   },
   "additionalProperties": false,
   "properties": {
-    "agents": {
-      "$ref": "#/$defs/AgentSettings",
+    "autonomy": {
+      "$ref": "#/$defs/AutonomyPolicy",
       "default": {
-        "agy": null,
-        "claude_reviewer": null,
-        "claude_supervisor": null,
-        "codex": null
+        "ambiguity_policy": "safest_reversible_assumption",
+        "ask_questions": false,
+        "destructive_actions": "deny",
+        "human_gate": "release_only",
+        "mode": "continuous",
+        "overwrite_policy": "version_outputs"
       }
     },
-    "allowed_paths": {
+    "definition_of_done": {
       "items": {
-        "discriminator": {
-          "mapping": {
-            "file": "#/$defs/FilePathRule",
-            "glob": "#/$defs/GlobPathRule",
-            "tree": "#/$defs/TreePathRule"
-          },
-          "propertyName": "kind"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/$defs/FilePathRule"
-          },
-          {
-            "$ref": "#/$defs/TreePathRule"
-          },
-          {
-            "$ref": "#/$defs/GlobPathRule"
-          }
-        ]
+        "minLength": 1,
+        "type": "string"
       },
       "minItems": 1,
-      "title": "Allowed Paths",
+      "title": "Definition Of Done",
       "type": "array"
     },
-    "evidence": {
-      "$ref": "#/$defs/EvidencePolicy",
-      "default": {
-        "bundle_directory": null,
-        "enforce_acceptance": true,
-        "generate_bundle": true,
-        "milestone_id": "M05",
-        "required_score": 90
-      }
+    "milestones": {
+      "items": {
+        "$ref": "#/$defs/ProjectMilestone"
+      },
+      "minItems": 1,
+      "title": "Milestones",
+      "type": "array"
     },
-    "gates": {
-      "$ref": "#/$defs/GatePolicy",
-      "default": {
-        "allow_git_writes": false,
-        "allow_network": false,
-        "max_changed_files": 200,
-        "max_context_bytes": 2000000,
-        "require_clean_baseline": false
-      }
-    },
-    "name": {
+    "mission": {
       "minLength": 1,
-      "title": "Name",
+      "title": "Mission",
       "type": "string"
     },
-    "objective": {
-      "minLength": 1,
-      "title": "Objective",
-      "type": "string"
-    },
-    "repository": {
-      "minLength": 1,
-      "title": "Repository",
-      "type": "string"
-    },
-    "retry_policy": {
-      "$ref": "#/$defs/RetryPolicySpec",
-      "default": {
-        "delays_seconds": [
-          60,
-          300,
-          900,
-          1800,
-          3600
-        ],
-        "jitter_fraction": 0.1,
-        "max_attempts": 8
-      }
-    },
-    "review": {
-      "$ref": "#/$defs/ReviewPolicy",
-      "default": {
-        "max_correction_rounds": 3,
-        "repair_malformed_output_once": true,
-        "require_agy": true
-      }
-    },
-    "scientific_invariants": {
+    "non_goals": {
       "default": [],
       "items": {
         "type": "string"
       },
-      "title": "Scientific Invariants",
+      "title": "Non Goals",
       "type": "array"
     },
-    "test_commands": {
-      "$ref": "#/$defs/TestCommands"
+    "project_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "title": {
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
     }
   },
   "required": [
-    "name",
-    "objective",
-    "repository",
-    "allowed_paths",
-    "test_commands"
+    "project_id",
+    "title",
+    "mission",
+    "definition_of_done",
+    "milestones"
   ],
-  "title": "JobSpecification",
+  "title": "ProjectCharter",
   "type": "object"
 }

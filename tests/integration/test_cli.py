@@ -17,8 +17,9 @@ def test_cli_init_start_status_and_events(tmp_path: Path, capsys) -> None:
     del payload
     # Read the only run id directly from SQLite through the public status path.
     import sqlite3
+    from contextlib import closing
 
-    with sqlite3.connect(db) as connection:
+    with closing(sqlite3.connect(db)) as connection:
         run_id = connection.execute("SELECT run_id FROM runs").fetchone()[0]
     assert main(["--db", str(db), "status", run_id, "--json"]) == 0
     status_output = capsys.readouterr().out

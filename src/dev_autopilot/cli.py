@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from uuid import UUID
 
+from dev_autopilot import cli_storage
 from dev_autopilot.adapters.fake import FakeCommandAdapter, ScriptedAgentAdapter
 from dev_autopilot.adapters.subprocess import ExecutableAgentAdapter, LocalCommandAdapter
 from dev_autopilot.config import load_job_configuration
@@ -28,6 +29,7 @@ from dev_autopilot.models import (
     ReviewReport,
 )
 from dev_autopilot.orchestrator import Orchestrator
+from dev_autopilot.project import ContinuousProjectRunner, ProjectStore, load_project_charter
 from dev_autopilot.states import PAUSED_STATES, TERMINAL_STATES, WorkflowState
 
 DEFAULT_DB = Path(".dev-autopilot/autopilot.sqlite3")
@@ -148,6 +150,38 @@ agents: {{}}
 """
 
 
+def _project_template(repository: str) -> str:
+    job_text = "\n".join(f"      {line}" for line in _template(repository).splitlines())
+    return f"""project_id: example-project
+title: Example continuous project
+mission: Complete every milestone with verified evidence and no conversational questions
+definition_of_done:
+  - every milestone is accepted
+  - the final review bundle verifies
+non_goals:
+  - automatic merge
+autonomy:
+  mode: continuous
+  ask_questions: false
+  ambiguity_policy: safest_reversible_assumption
+  destructive_actions: deny
+  overwrite_policy: version_outputs
+  human_gate: release_only
+milestones:
+  - milestone_id: M05
+    title: Final M05 delivery
+    objective: Implement, test, review and package the requested M05 scope
+    dependencies: []
+    job:
+{job_text}
+      evidence:
+        milestone_id: M05
+        required_score: 90
+        generate_bundle: true
+        enforce_acceptance: true
+"""
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dev-autopilot")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -201,6 +235,28 @@ def build_parser() -> argparse.ArgumentParser:
     migrate.add_argument("job", type=Path)
     migrate.add_argument("checkpoint", type=Path)
 
+    project = sub.add_parser("project", help="continuous no-questions project execution")
+    project_sub = project.add_subparsers(dest="project_command", required=True)
+    project_init = project_sub.add_parser("init")
+    project_init.add_argument("path", type=Path)
+    project_init.add_argument("--repository", default=".")
+    project_init.add_argument("--force", action="store_true")
+    project_plan = project_sub.add_parser("plan")
+    project_plan.add_argument("charter", type=Path)
+    project_start = project_sub.add_parser("start")
+    project_start.add_argument("charter", type=Path)
+    project_start.add_argument("--fake", action="store_true")
+    project_start.add_argument("--json", action="store_true")
+    project_resume = project_sub.add_parser("resume")
+    project_resume.add_argument("project_run_id", type=UUID)
+    project_resume.add_argument("--fake", action="store_true")
+    project_resume.add_argument("--json", action="store_true")
+    project_status = project_sub.add_parser("status")
+    project_status.add_argument("project_run_id", type=UUID)
+    project_status.add_argument("--json", action="store_true")
+
+    cli_storage.register(sub)
+
     return parser
 
 
@@ -238,7 +294,54 @@ def main(argv: list[str] | None = None) -> int:
             print(args.path)
             return 0
 
+        if args.command == "project" and args.project_command == "init":
+            if args.path.exists() and not args.force:
+                raise ConfigurationError(f"refusing to overwrite {args.path}; use --force")
+            args.path.parent.mkdir(parents=True, exist_ok=True)
+            args.path.write_text(_project_template(args.repository), encoding="utf-8")
+            print(args.path)
+            return 0
+        if args.command == "project" and args.project_command == "plan":
+            charter = load_project_charter(args.charter)
+            print(
+                json.dumps(
+                    {
+                        "project_id": charter.project_id,
+                        "mission": charter.mission,
+                        "autonomy": charter.autonomy.to_dict(),
+                        "milestones": [m.to_dict() for m in charter.ordered_milestones()],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
+
+        storage_exit = cli_storage.handle(args)
+        if storage_exit is not None:
+            return storage_exit
+
         store = SQLiteStore(args.db)
+
+        if args.command == "project":
+            project_store = ProjectStore(store)
+            if args.project_command == "status":
+                payload = project_store.get(args.project_run_id)
+                print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload["status"])
+                return 0
+            runner = ContinuousProjectRunner(
+                store,
+                lambda job: _build_orchestrator(store, job, fake=args.fake),
+            )
+            if args.project_command == "start":
+                project_run_id = runner.start(load_project_charter(args.charter))
+                payload = project_store.get(project_run_id)
+            elif args.project_command == "resume":
+                payload = runner.run(args.project_run_id)
+            else:
+                raise AssertionError(f"unhandled project command {args.project_command}")
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else payload["status"])
+            return 0 if payload["status"] != "FAILED" else 1
 
         if args.command == "start":
             job = load_job_configuration(args.job)
@@ -323,7 +426,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         raise AssertionError(f"unhandled command {args.command}")
-    except (AutopilotError, ConfigurationError, OSError, ValueError) as exc:
+    except (AutopilotError, ConfigurationError, OSError, ValueError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
