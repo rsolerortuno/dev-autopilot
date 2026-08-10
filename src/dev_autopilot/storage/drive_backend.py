@@ -154,6 +154,11 @@ class DriveStorageBackend:
     def _escape_query(value: str) -> str:
         return value.replace("\\", "\\\\").replace("'", "\\'")
 
+    @staticmethod
+    def _logical_key_tag(key: str) -> str:
+        """Return a fixed-size Drive appProperties identifier for a storage key."""
+        return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
     def _find_children(self, parent_id: str, *, name: str | None = None) -> list[dict[str, Any]]:
         clauses = [f"'{self._escape_query(parent_id)}' in parents", "trashed=false"]
         if name is not None:
@@ -270,7 +275,7 @@ class DriveStorageBackend:
                     body={
                         "name": name,
                         "parents": [parent],
-                        "appProperties": {"devAutopilotKey": key},
+                        "appProperties": {"devAutopilotKey": self._logical_key_tag(key)},
                     },
                     media_body=media,
                     fields="id",
@@ -316,7 +321,7 @@ class DriveStorageBackend:
                     body={
                         "name": name,
                         "parents": [parent],
-                        "appProperties": {"devAutopilotKey": key},
+                        "appProperties": {"devAutopilotKey": self._logical_key_tag(key)},
                     },
                     media_body=media,
                     fields="id",

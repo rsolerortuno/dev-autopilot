@@ -22,8 +22,22 @@ LEGAL_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
             WorkflowState.CANCELLED,
         }
     ),
-    WorkflowState.SCOPE_VALIDATION: frozenset({WorkflowState.FAST_TESTS, WorkflowState.FAILED, WorkflowState.CANCELLED}),
-    WorkflowState.FAST_TESTS: frozenset({WorkflowState.AGY_AUDIT, WorkflowState.FAILED, WorkflowState.CANCELLED}),
+    WorkflowState.SCOPE_VALIDATION: frozenset(
+        {
+            WorkflowState.FAST_TESTS,
+            WorkflowState.CORRECTION,
+            WorkflowState.FAILED,
+            WorkflowState.CANCELLED,
+        }
+    ),
+    WorkflowState.FAST_TESTS: frozenset(
+        {
+            WorkflowState.AGY_AUDIT,
+            WorkflowState.CORRECTION,
+            WorkflowState.FAILED,
+            WorkflowState.CANCELLED,
+        }
+    ),
     WorkflowState.AGY_AUDIT: frozenset(
         {
             WorkflowState.CLAUDE_REVIEW,
@@ -54,6 +68,7 @@ LEGAL_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
     WorkflowState.FINAL_TESTS: frozenset(
         {
             WorkflowState.READY_FOR_HUMAN_REVIEW,
+            WorkflowState.CORRECTION,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }

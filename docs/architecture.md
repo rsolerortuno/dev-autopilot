@@ -2,7 +2,7 @@
 
 ## Decision summary
 
-Dev Autopilot 0.5.0 has two cooperating planes:
+Dev Autopilot 0.6.0 has two cooperating planes:
 
 1. a persistent control plane for project milestones, repository work, review,
    acceptance, and evidence;

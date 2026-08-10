@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -334,10 +335,40 @@ class ContinuousProjectRunner:
                 self.projects.set_milestone(
                     project_run_id, milestone.milestone_id, MilestoneStatus.RUNNING, autopilot_run_id=run_id
                 )
-            run = self.store.get_run(run_id)
-            if run.state is WorkflowState.PAUSED_QUOTA:
-                orchestrator.resume_if_due(run_id)
-            run = orchestrator.run_until_blocked(run_id)
+            # Retryable quota pauses are operational states, not human blockers.
+            # Keep the continuous project alive and resume the same persisted run
+            # automatically when its retry becomes due.
+            quota_wait_announced = False
+
+            while True:
+                run = self.store.get_run(run_id)
+
+                if run.state is WorkflowState.PAUSED_QUOTA:
+                    if not quota_wait_announced:
+                        orchestrator.progress(
+                            f"{milestone.milestone_id} [{str(run_id)[:8]}] | PAUSED_QUOTA | waiting for scheduled retry..."
+                        )
+                        quota_wait_announced = True
+
+                    resumed = orchestrator.resume_if_due(run_id)
+
+                    if resumed.state is WorkflowState.PAUSED_QUOTA:
+                        time.sleep(1.0)
+                        continue
+
+                    orchestrator.progress(
+                        f"{milestone.milestone_id} [{str(run_id)[:8]}] | retry due | resuming {resumed.state.value}"
+                    )
+                    run = resumed
+                    quota_wait_announced = False
+
+                run = orchestrator.run_until_blocked(run_id)
+
+                if run.state is WorkflowState.PAUSED_QUOTA:
+                    continue
+
+                break
+
             if run.state is WorkflowState.READY_FOR_HUMAN_REVIEW:
                 self.projects.set_milestone(
                     project_run_id,

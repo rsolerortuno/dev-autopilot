@@ -19,7 +19,7 @@ DevAutopilot/
 
 ## Install the exact wheel
 
-Build `dev_autopilot-0.5.0-py3-none-any.whl`, upload it to Drive, then set its
+Build `dev_autopilot-0.6.0-py3-none-any.whl`, upload it to Drive, then set its
 path in `notebooks/dev_autopilot_colab_worker.ipynb`. The notebook deliberately
 does not install an unpinned GitHub branch.
 

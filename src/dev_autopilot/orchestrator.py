@@ -8,7 +8,7 @@ import subprocess
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, ClassVar, TypeVar
 from uuid import UUID, uuid4
 
 from dev_autopilot.adapters.base import AgentAdapter, CommandAdapter
@@ -62,6 +62,19 @@ class Orchestrator:
     _LEASE_CLEANUP_MARGIN_SECONDS = 60
     _MINIMUM_LEASE_SECONDS = 300
 
+    _PROGRESS_LABELS: ClassVar[dict[WorkflowState, str]] = {
+        WorkflowState.CREATED: "creating run",
+        WorkflowState.PLAN_VALIDATION: "validating plan and repository",
+        WorkflowState.BASELINE_VALIDATION: "running baseline validation",
+        WorkflowState.IMPLEMENTATION: "Codex implementing",
+        WorkflowState.SCOPE_VALIDATION: "checking changed-file scope",
+        WorkflowState.FAST_TESTS: "running fast deterministic gates",
+        WorkflowState.AGY_AUDIT: "AGY auditing implementation",
+        WorkflowState.CLAUDE_REVIEW: "Claude independently reviewing",
+        WorkflowState.CORRECTION: "Codex correcting detected problems",
+        WorkflowState.FINAL_TESTS: "running final deterministic gates",
+    }
+
     def __init__(
         self,
         store: SQLiteStore,
@@ -72,6 +85,7 @@ class Orchestrator:
         claude_reviewer: AgentAdapter,
         claude_supervisor: AgentAdapter | None = None,
         clock: Clock | None = None,
+        progress: Callable[[str], None] | None = None,
     ) -> None:
         self.store = store
         self.engine = TransitionEngine(store)
@@ -85,6 +99,7 @@ class Orchestrator:
         self.ledger = FindingLedger(store)
         self.evidence = RunEvidenceStore(store)
         self._active_lock_token: str | None = None
+        self.progress = progress or (lambda message: None)
 
     def create_run(self, job: JobSpecification, *, run_id: UUID | None = None) -> RunRecord:
         return self.store.create_run(job, run_id=run_id, now=self.clock.now())
@@ -110,8 +125,25 @@ class Orchestrator:
                 if run.state in TERMINAL_STATES or run.state in PAUSED_STATES:
                     return run
                 before = run.state
+
+                label = self._PROGRESS_LABELS.get(
+                    before,
+                    before.value,
+                )
+                self.progress(f"{run.job.evidence.milestone_id} [{str(run.run_id)[:8]}] | {label}...")
+
                 self.step(run_id, lock_token=token)
                 after = self.store.get_run(run_id)
+
+                if after.state != before:
+                    events = self.store.list_events(run_id)
+                    reason = str(events[-1].get("reason", "")) if events else ""
+                    self.progress(
+                        f"{run.job.evidence.milestone_id} "
+                        f"[{str(run.run_id)[:8]}] | "
+                        f"{before.value} -> {after.state.value}" + (f" | {reason}" if reason else "")
+                    )
+
                 if after.state == before:
                     return after
             return self.engine.fail(
@@ -229,6 +261,45 @@ class Orchestrator:
         )
         return result, False
 
+    @staticmethod
+    def _gate_failure_detail(result: ExecutionResult) -> str:
+        parts = [result.summary]
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+        if stdout:
+            parts.append(f"stdout: {stdout[-4000:]}")
+        if stderr:
+            parts.append(f"stderr: {stderr[-4000:]}")
+        return "\n".join(parts)
+
+    def _repair_or_fail_gate(
+        self,
+        run: RunRecord,
+        *,
+        result: ExecutionResult,
+        failure_class: ErrorClass,
+    ) -> RunRecord:
+        detail = self._gate_failure_detail(result)
+
+        # Fail closed for operational/security/configuration classes. Only a
+        # deterministic implementation/test failure is sent back to Codex.
+        if failure_class is not ErrorClass.TEST_FAILURE:
+            return self.engine.fail(run.run_id, failure_class, detail)
+
+        if run.correction_rounds >= run.job.review.max_correction_rounds:
+            return self.engine.fail(
+                run.run_id,
+                ErrorClass.TEST_FAILURE,
+                f"maximum correction rounds reached after deterministic gate failure:\n{detail}",
+            )
+
+        return self.engine.transition(
+            run.run_id,
+            WorkflowState.CORRECTION,
+            reason=(f"deterministic gate failed; correct the implementation and rerun gates.\n{detail}"),
+            actor="gate",
+        )
+
     def _command_phase(
         self,
         run: RunRecord,
@@ -240,7 +311,11 @@ class Orchestrator:
         result, _ = self._run_command(run, command)
         failure = self.gates.classify_command(result)
         if failure is not None:
-            return self.engine.fail(run.run_id, failure.error_class, failure.reason)
+            return self._repair_or_fail_gate(
+                run,
+                result=result,
+                failure_class=failure.error_class,
+            )
         return self.engine.transition(run.run_id, next_state, reason=reason)
 
     def _baseline(self, run: RunRecord) -> RunRecord:
@@ -442,7 +517,12 @@ class Orchestrator:
     def _correction(self, run: RunRecord) -> RunRecord:
         self.store.increment_correction_rounds(run.run_id)
         result = self.codex.execute(
-            task="Correct every OPEN or INVALIDATED blocking finding in the supplied ledger",
+            task=(
+                "Correct every OPEN or INVALIDATED blocking finding and every "
+                "deterministic gate failure recorded in the supplied recent "
+                "events. Use the exact validator stdout/stderr as the correction "
+                "contract. Do not invent replacement paths or deliverables."
+            ),
             repository=Path(run.job.repository),
             context=self._agent_context(run),
             output_contract=IMPLEMENTATION_CONTRACT,
@@ -454,7 +534,11 @@ class Orchestrator:
         result, _ = self._run_command(run, run.job.test_commands.final)
         failure = self.gates.classify_command(result)
         if failure is not None:
-            return self.engine.fail(run.run_id, failure.error_class, failure.reason)
+            return self._repair_or_fail_gate(
+                run,
+                result=result,
+                failure_class=failure.error_class,
+            )
         final_diff = self.commands.diff_sha256(repository=Path(run.job.repository))
         self.ledger.invalidate_stale(
             run.run_id,
@@ -569,7 +653,21 @@ class Orchestrator:
         if retry_class is None:
             return self.engine.fail(run.run_id, ErrorClass.MECHANICAL_OUTPUT_ERROR, result.summary)
         previous = self.store.get_retry(run.run_id, owner)
-        scheduler = RetryScheduler(run.job.retry_policy, self.clock)
+
+        retry_policy = run.job.retry_policy
+
+        # All transient agent failures use a short linear retry schedule.
+        # A real provider-supplied quota reset timestamp still takes
+        # precedence inside RetryScheduler.
+        if result.quota_reset_at is None:
+            retry_policy = retry_policy.model_copy(
+                update={
+                    "delays_seconds": tuple(range(1, retry_policy.max_attempts + 1)),
+                    "jitter_fraction": 0.0,
+                }
+            )
+
+        scheduler = RetryScheduler(retry_policy, self.clock)
         try:
             retry = scheduler.schedule(
                 owner=owner,
