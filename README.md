@@ -5,14 +5,19 @@ software. It runs bounded implementation, deterministic validation, adversarial
 audit, independent review, correction, and evidence packaging while SQLite
 preserves every state transition across restarts.
 
-**Version 0.5.0 is the final M05 release.** It combines:
+**Version 0.6.0 is the real-project hardening release.** It preserves the
+M00-M05 architecture from v0.5.0 while incorporating fixes validated during a
+real autonomous TargetIntel-IO milestone:
 
-- M00: an immutable project charter;
-- M01: continuous milestone execution without conversational questions;
-- M02: structured, diff-bound review findings;
-- M03: exact baselines and tamper-evident review bundles;
-- M04: bounded-memory local/Google Drive splitting and reassembly;
-- M05: fenced, checkpoint-aware CPU/high-RAM/GPU/TPU workers for Colab-style runtimes.
+- automatic built-in Codex, AGY and Claude commands with optional environment overrides;
+- structured, repository-bounded read-only AGY auditing;
+- automatic recovery from deterministic gate failures through bounded correction;
+- continuous retry/resume behavior with short retry intervals for transient agent failures;
+- stricter quota-versus-malformed-output classification;
+- live verbose project progress reporting;
+- stricter changed-file gate handling;
+- fixed-size SHA-256 Google Drive appProperties keys for long logical object paths;
+- regression coverage for the newly hardened execution paths.
 
 The autonomous authority boundary still ends before commit, push, pull request,
 tag, release publication, or merge. A human approves the final release.
@@ -213,7 +218,7 @@ unsupported strategies fail rather than silently producing misleading shards.
 Use `notebooks/dev_autopilot_colab_worker.ipynb`. The notebook:
 
 1. mounts and authenticates Drive;
-2. installs an exact `dev-autopilot-0.5.0` wheel from Drive rather than GitHub `main`;
+2. installs an exact `dev-autopilot-0.6.0` wheel from Drive rather than GitHub `main`;
 3. detects CPU, high-RAM, GPU, or TPU capability;
 4. registers an expiring worker marker;
 5. polls the matching queue;

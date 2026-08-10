@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.0 - 2026-08-10
+
+### Real-project execution hardening
+
+- Added built-in default commands for Codex, AGY, and Claude so normal project
+  execution no longer requires `DEV_AUTOPILOT_*_COMMAND` environment variables.
+  Environment variables remain available as explicit overrides.
+- Added structured AGY integration with repository-bounded, read-only audit
+  instructions and schema-constrained `AuditReport` output. AGY audits start in
+  an isolated project automatically, so repository reads do not require manual
+  per-repository `read_file(...)` permission configuration.
+- Added deterministic-gate autocorrection instead of terminal failure when an
+  implementation can be repaired.
+- Added continuous project retry/resume behavior for retryable agent failures.
+- Changed default transient retry delays to short linear backoff
+  (`1, 2, 3, 4, 5, 6, 7, 8` seconds), while explicit provider reset times still
+  take precedence.
+- Improved subprocess classification so malformed bridge output is not
+  incorrectly classified as provider quota exhaustion.
+- Added live verbose project progress reporting.
+- Hardened changed-file validation.
+- Fixed Google Drive `appProperties` failures for long logical storage keys by
+  storing a deterministic SHA-256 identifier rather than the full logical key.
+- Added regression tests covering gate autocorrection, project autoresume,
+  built-in bridge commands, and Drive long-key handling.
+- Validated the hardened workflow against a real TargetIntel-IO M00 project,
+  including Codex correction, deterministic gates, AGY audit, independent
+  review, evidence packaging, and `READY_FOR_HUMAN_RELEASE`.
+
 ## 0.5.0 - 2026-08-06
 
 Final M00-M05 release candidate: continuous milestone execution, point-by-point

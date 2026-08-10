@@ -206,7 +206,7 @@ class AgentSettings(ContractModel):
 
 
 class RetryPolicySpec(ContractModel):
-    delays_seconds: tuple[int, ...] = (60, 300, 900, 1800, 3600)
+    delays_seconds: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7, 8)
     max_attempts: Annotated[int, Field(gt=0)] = 8
     jitter_fraction: Annotated[float, Field(ge=0.0, le=1.0)] = 0.1
 

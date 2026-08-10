@@ -86,4 +86,4 @@ __all__ = [
     "load_job_configuration_text",
 ]
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"

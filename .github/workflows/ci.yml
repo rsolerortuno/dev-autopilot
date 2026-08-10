@@ -51,7 +51,7 @@ jobs:
           /tmp/dev-autopilot-wheel/bin/python -m pip install --upgrade pip
           /tmp/dev-autopilot-wheel/bin/python -m pip install dist/*.whl
           /tmp/dev-autopilot-wheel/bin/dev-autopilot --help
-          /tmp/dev-autopilot-wheel/bin/python -c "import dev_autopilot; assert dev_autopilot.__version__ == '0.5.0'"
+          /tmp/dev-autopilot-wheel/bin/python -c "import dev_autopilot; assert dev_autopilot.__version__ == '0.6.0'"
           /tmp/dev-autopilot-wheel/bin/python -m pip check
       - name: Reject whitespace errors
         run: git diff --check

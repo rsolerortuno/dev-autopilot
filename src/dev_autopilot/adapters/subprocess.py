@@ -270,14 +270,38 @@ class ExecutableAgentAdapter:
                 )
             if completed.returncode != 0:
                 combined = (completed.stderr + "\n" + completed.stdout).lower()
-                status = (
-                    ResultStatus.QUOTA
-                    if any(token in combined for token in ("quota", "rate limit", "capacity"))
-                    else ResultStatus.ERROR
+
+                bridge_parse_failure = (
+                    completed.returncode == 3
+                    and "dev_autopilot.bridge" in self.settings.command
+                    and "agent stdout did not contain a json object" in combined
                 )
+
+                strong_quota_markers = (
+                    "insufficient_quota",
+                    "quota exceeded",
+                    "usage limit reached",
+                    "usage limit exceeded",
+                    "rate limit exceeded",
+                    "too many requests",
+                    "http 429",
+                    "status 429",
+                    "you've hit your usage limit",
+                    "you have reached your usage limit",
+                )
+
+                if bridge_parse_failure:
+                    status = ResultStatus.ERROR
+                    summary = f"{self.name} bridge output malformed (exit {completed.returncode})"
+                else:
+                    status = (
+                        ResultStatus.QUOTA if any(marker in combined for marker in strong_quota_markers) else ResultStatus.ERROR
+                    )
+                    summary = f"{self.name} exited with {completed.returncode}"
+
                 return ExecutionResult(
                     status=status,
-                    summary=f"{self.name} exited with {completed.returncode}",
+                    summary=summary,
                     stdout=completed.stdout,
                     stderr=completed.stderr,
                     exit_code=completed.returncode,

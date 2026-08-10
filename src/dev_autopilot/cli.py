@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID
 
@@ -39,7 +40,13 @@ def _success(summary: str, output: dict[str, object] | None = None) -> Execution
     return ExecutionResult(status=ResultStatus.SUCCESS, summary=summary, output=output or {})
 
 
-def _build_orchestrator(store: SQLiteStore, job: JobSpecification, *, fake: bool) -> Orchestrator:
+def _build_orchestrator(
+    store: SQLiteStore,
+    job: JobSpecification,
+    *,
+    fake: bool,
+    progress: Callable[[str], None] | None = None,
+) -> Orchestrator:
     if fake:
         commands = FakeCommandAdapter(changed=())
         codex = ScriptedAgentAdapter("codex", [_success("fake implementation")])
@@ -62,6 +69,7 @@ def _build_orchestrator(store: SQLiteStore, job: JobSpecification, *, fake: bool
             codex=codex,
             agy=agy,
             claude_reviewer=reviewer,
+            progress=progress,
         )
     if not job.gates.allow_network:
         raise ConfigurationError("real agent execution requires explicit gates.allow_network: true")
@@ -88,8 +96,21 @@ def _build_orchestrator(store: SQLiteStore, job: JobSpecification, *, fake: bool
         claude_supervisor=(
             None
             if job.agents.claude_supervisor is None
-            else ExecutableAgentAdapter("claude-supervisor", job.agents.claude_supervisor)
+            else ExecutableAgentAdapter(
+                "claude-supervisor",
+                job.agents.claude_supervisor,
+            )
         ),
+        progress=progress,
+    )
+
+
+def _print_progress(message: str) -> None:
+    timestamp = time.strftime("%H:%M:%S")
+    print(
+        f"[{timestamp}] {message}",
+        file=sys.stderr,
+        flush=True,
     )
 
 
@@ -132,7 +153,7 @@ test_commands:
   # shell syntax such as pipes or &&.
   allow_shell: false
 retry_policy:
-  delays_seconds: [60, 300, 900, 1800, 3600]
+  delays_seconds: [1, 2, 3, 4, 5, 6, 7, 8]
   max_attempts: 8
   jitter_fraction: 0.1
 gates:
@@ -247,10 +268,12 @@ def build_parser() -> argparse.ArgumentParser:
     project_start.add_argument("charter", type=Path)
     project_start.add_argument("--fake", action="store_true")
     project_start.add_argument("--json", action="store_true")
+    project_start.add_argument("--verbose", action="store_true")
     project_resume = project_sub.add_parser("resume")
     project_resume.add_argument("project_run_id", type=UUID)
     project_resume.add_argument("--fake", action="store_true")
     project_resume.add_argument("--json", action="store_true")
+    project_resume.add_argument("--verbose", action="store_true")
     project_status = project_sub.add_parser("status")
     project_status.add_argument("project_run_id", type=UUID)
     project_status.add_argument("--json", action="store_true")
@@ -331,7 +354,12 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             runner = ContinuousProjectRunner(
                 store,
-                lambda job: _build_orchestrator(store, job, fake=args.fake),
+                lambda job: _build_orchestrator(
+                    store,
+                    job,
+                    fake=args.fake,
+                    progress=(_print_progress if args.verbose else None),
+                ),
             )
             if args.project_command == "start":
                 project_run_id = runner.start(load_project_charter(args.charter))
