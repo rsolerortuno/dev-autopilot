@@ -45,10 +45,16 @@ drive = [
     "google-auth>=2.30",
     "google-auth-oauthlib>=1.2",
 ]
+eval = [
+    "pypdf>=5,<7",
+    "pytest>=8",
+    "latch-eval-tools",
+]
 
 [project.scripts]
-dev-autopilot = "dev_autopilot.cli:main"
+dev-autopilot = "dev_autopilot.entrypoint:main"
 targetintel-autopilot = "dev_autopilot.cli:main"
+dev-autopilot-eval = "dev_autopilot.eval_cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

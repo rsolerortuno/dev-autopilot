@@ -42,4 +42,7 @@ REVIEW_CONTRACT = """Write JSON to DEV_AUTOPILOT_OUTPUT_FILE:
 IMPLEMENTATION_CONTRACT = """Modify only authorized repository paths, run no git
 write operations, and write JSON to DEV_AUTOPILOT_OUTPUT_FILE:
 {"summary": non-empty string, "changed_paths": [repo-relative strings],
- "tests_run": [strings], "assumptions": [strings], "unresolved_questions": [strings]}"""
+ "tests_run": [strings], "assumptions": [strings], "unresolved_questions": [strings]}
+IMPORTANT: changed_paths is cumulative for the current working tree, not phase-local.
+It must list the complete sorted set of every modified, staged, and untracked
+repo-relative path versus HEAD, including paths created in earlier correction rounds."""
