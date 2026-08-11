@@ -83,7 +83,7 @@ _REQUIRED_REPORT_FIELDS = (
 _REPORT_PLACEHOLDERS = frozenset({"tbd", "todo", "unknown", "n/a", "na", "none", "null"})
 
 _SCHEMA_CONTRACT = {
-    "version": "latch-eval-authoring-v2.4",
+    "version": "latch-eval-authoring-v2.5",
     "purpose": (
         "Machine-readable first-write contract. Use these shapes from the first file write; "
         "do not invent alternate note/metadata/grader/calibration/manifest schemas."
@@ -150,6 +150,17 @@ _SCHEMA_CONTRACT = {
             "the source paper interpretation. Do not use TBD/None/N/A placeholders."
         ),
     },
+    "solver_evidence_policy": {
+        "data_backed_full_paper_access": "forbidden",
+        "rule": (
+            "When source/source_manifest.json contains one or more data records, eval.json.task must "
+            "not direct the solver to the full staged paper text, original paper file, or source origin. "
+            "Use source/data evidence in the solver task. The full paper remains author/reviewer-only."
+        ),
+        "literature_only_exception": (
+            "When no data records are staged, paper-text access may be appropriate for a literature-grounded eval."
+        ),
+    },
     "first_write_protocol": [
         "Read SCHEMA_CONTRACT.json before creating output JSON files.",
         "Write notes as one string, never a JSON object.",
@@ -158,6 +169,7 @@ _SCHEMA_CONTRACT = {
         "Use manifest paths ending in /eval.json and grader equal to eval.json grader.type.",
         "Write one REPORT.md review card per eval with every report_md.required_per_eval_fields label populated.",
         "For Source interpretation / tension, explicitly state no material tension or describe the tension with the source paper.",
+        "If source_manifest.json contains data, keep the full paper author/reviewer-only: solver tasks may use source/data but must not point to paper.txt, the staged original paper file, or the paper origin URL/path.",
         "Before returning from implementation, run the full workspace gate (validator + generated tests) and fix every failure locally.",
     ],
 }
@@ -333,6 +345,7 @@ Reject or redesign an eval if any of these is true:
 - the tolerance is arbitrary rather than justified by method sweeps, replicate
   variability, measurement resolution, or categorical exactness;
 - the task grades paper recall instead of working with the supplied evidence;
+- a data-backed task points the solver to the full staged paper (`source/paper.txt`, the staged original paper file, or the paper source origin) instead of requiring work with `source/data`;
 - the eval requires a missing file, hidden manual step, or invented data node.
 """
 
@@ -569,6 +582,7 @@ against defensible and wrong methods, and add deterministic tests. When selectin
 analysis strategy is part of the capability, do not turn the task into a recipe by naming
 the exact filter, comparator, control structure, aggregation, normalization, ranking rule, endpoint or statistic.
 Record what the solver must infer in calibration.json, declare literal forbidden_prompt_cues, and make the reviewer attack prompt leakage.
+When source/source_manifest.json contains staged data, keep the full paper author/reviewer-only: eval.json.task may direct the solver to source/data but must not reference source/paper.txt, the staged original paper file, or the paper origin URL/path. If textual evidence is genuinely required for a data-backed capability, stage a narrowly curated excerpt as explicit data rather than exposing the full results narrative.
 Do not grade decorative fields: every grader field must differ from canonical ground truth in at least one plausible failing calibration answer.
 Before returning your implementation report, run `{sys.executable} -m dev_autopilot.eval_authoring gate . --expected-count {expected_count}` and fix every reported issue yourself. This full pre-return gate validates the schema AND executes the generated pytest suite. Do not deliberately return a known-invalid or test-broken eval pack for the outer correction loop to repair.
 When multiple scientifically distinct failing methods are available and the answer space permits it, prefer failure methods that produce different wrong answer patterns; do not force artificial diversity for genuinely binary decisions.
@@ -591,6 +605,7 @@ Produce manifest.json and REPORT.md. REPORT.md must contain one review card per 
             "every grader field is discriminating: at least one plausible failing answer changes it from canonical ground truth",
             "each task contains an exact <EVAL_ANSWER> JSON contract without leaking "
             "the answer, a load-bearing analysis recipe, or a declared forbidden prompt cue",
+            "data-backed solver tasks use staged source/data evidence and do not expose the full paper text, staged paper file, or paper origin",
             "manifest.json, deterministic tests, and one complete REPORT.md review card per eval are present and internally consistent",
             "each REPORT.md review card states confidence, open risks, and whether the data-derived ground truth has any material tension with the source paper interpretation",
             "the implementer used SCHEMA_CONTRACT.json and ran the full deterministic eval gate before returning whenever execution was available",
@@ -673,6 +688,7 @@ Produce manifest.json and REPORT.md. REPORT.md must contain one review card per 
                         "the exact filter, comparator, control structure, aggregation, normalization, ranking "
                         "rule, endpoint or statistic",
                         "analysis_choice must declare literal forbidden_prompt_cues and none may appear in the task",
+                        "when staged data are present, the full paper is author/reviewer-only and solver tasks must not reference paper.txt, the staged original paper file, or the paper origin",
                         "every grader field must be discriminating: at least one plausible failing method must change it from canonical ground truth",
                         "every calibration method must include a full predicted_answer and "
                         "be executed through the configured grader",
@@ -1128,7 +1144,56 @@ def _validate_calibration(
                 )
 
 
-def _validate_eval_dir(eval_dir: Path) -> list[str]:
+def _data_backed_solver_forbidden_paper_refs(root: Path) -> tuple[str, ...]:
+    """Return full-paper references that data-backed solver tasks must not expose."""
+    manifest_path = root / "source" / "source_manifest.json"
+    if not manifest_path.is_file():
+        return ()
+    try:
+        manifest = _load_json(manifest_path)
+    except EvalAuthoringError:
+        return ()
+    data = manifest.get("data")
+    if not isinstance(data, list) or not data:
+        return ()
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        return ()
+
+    refs: set[str] = set()
+    for key in ("extracted_text", "stored_path", "origin"):
+        value = source.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        value = value.strip()
+        refs.add(value)
+        normalized = value.replace("\\", "/")
+        refs.add(normalized)
+        parsed = urllib.parse.urlparse(value)
+        path_text = parsed.path if parsed.scheme else normalized
+        basename = Path(urllib.parse.unquote(path_text)).name.strip()
+        if basename:
+            refs.add(basename)
+    # `paper.txt` is the canonical extracted full-text path even when the
+    # manifest was authored by an older version or contains unusual source metadata.
+    refs.update({"source/paper.txt", "paper.txt"})
+    return tuple(sorted((ref for ref in refs if ref), key=len, reverse=True))
+
+
+def _task_full_paper_reference(task: str, forbidden_refs: Iterable[str]) -> str | None:
+    task_folded = task.casefold().replace("\\", "/")
+    for ref in forbidden_refs:
+        normalized = ref.casefold().replace("\\", "/")
+        if normalized and normalized in task_folded:
+            return ref
+    return None
+
+
+def _validate_eval_dir(
+    eval_dir: Path,
+    *,
+    solver_forbidden_paper_refs: Iterable[str] = (),
+) -> list[str]:
     issues: list[str] = []
     eval_path = eval_dir / "eval.json"
     if not eval_path.is_file():
@@ -1148,6 +1213,12 @@ def _validate_eval_dir(eval_dir: Path) -> list[str]:
     task = payload.get("task")
     if not isinstance(task, str) or "<EVAL_ANSWER>" not in task or "</EVAL_ANSWER>" not in task:
         issues.append(f"{eval_path}: task must contain an <EVAL_ANSWER> JSON contract")
+    elif leaked_paper_ref := _task_full_paper_reference(task, solver_forbidden_paper_refs):
+        issues.append(
+            f"{eval_path}: data-backed task exposes the full paper via {leaked_paper_ref!r}; "
+            "keep the full paper author/reviewer-only and require solver work from source/data "
+            "or a narrowly curated staged excerpt"
+        )
     notes = payload.get("notes")
     if not isinstance(notes, str):
         issues.append(f"{eval_path}: notes must be a string")
@@ -1293,8 +1364,14 @@ def validate_eval_pack(root: Path, *, expected_count: int | None = None) -> list
     ids: set[str] = set()
     canaries: set[str] = set()
     grader_by_id: dict[str, str | None] = {}
+    solver_forbidden_paper_refs = _data_backed_solver_forbidden_paper_refs(root)
     for eval_dir in eval_dirs:
-        issues.extend(_validate_eval_dir(eval_dir))
+        issues.extend(
+            _validate_eval_dir(
+                eval_dir,
+                solver_forbidden_paper_refs=solver_forbidden_paper_refs,
+            )
+        )
         if eval_dir.name in ids:
             issues.append(f"duplicate eval id: {eval_dir.name}")
         ids.add(eval_dir.name)

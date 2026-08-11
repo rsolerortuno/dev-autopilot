@@ -180,6 +180,7 @@ def test_project_charter_contains_latch_profile_gates(tmp_path: Path) -> None:
     assert "ground truth must be derived from supplied evidence, never guessed by an LLM" in job["scientific_invariants"]
     assert any("prompts must not prescribe or strongly cue" in item for item in job["scientific_invariants"])
     assert any("full predicted_answer" in item for item in job["scientific_invariants"])
+    assert any("author/reviewer-only" in item for item in job["scientific_invariants"])
     assert job["review"]["max_correction_rounds"] == 2
 
 
@@ -250,7 +251,7 @@ def test_schema_first_contract_is_staged_and_machine_readable(tmp_path: Path) ->
     contract_path = workspace.root / "SCHEMA_CONTRACT.json"
     assert contract_path.is_file()
     contract = json.loads(contract_path.read_text())
-    assert contract["version"] == "latch-eval-authoring-v2.4"
+    assert contract["version"] == "latch-eval-authoring-v2.5"
     assert isinstance(contract["eval_json"]["notes"], str)
     assert contract["eval_json"]["metadata"]["eval_type"] == "scientific"
     assert isinstance(contract["eval_json"]["grader"]["config"], dict)
@@ -324,3 +325,45 @@ def test_schema_contract_declares_report_review_card_fields(tmp_path: Path) -> N
     assert "Confidence" in required
     assert "Open risks" in required
     assert "Source interpretation / tension" in required
+    assert contract["solver_evidence_policy"]["data_backed_full_paper_access"] == "forbidden"
+
+
+def test_rejects_full_paper_reference_in_data_backed_task(tmp_path: Path) -> None:
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Example paper\nResults narrative that should remain author/reviewer-only.")
+    table = tmp_path / "assay.csv"
+    table.write_text("sample,value\na,1\nb,2\n")
+    workspace = prepare_eval_workspace(
+        paper.as_posix(),
+        output=tmp_path / "work",
+        data=[table],
+        expected_count=1,
+    )
+    _write_good_eval(workspace.root)
+    eval_path = workspace.root / "evals" / "demo_eval" / "eval.json"
+
+    for leaked_ref in ("source/paper.txt", "source/paper.md"):
+        payload = json.loads(eval_path.read_text())
+        payload["task"] = (
+            f"Read {leaked_ref} and use the supplied table to make the decision.\n\n"
+            "Return EXACTLY:\n<EVAL_ANSWER>\n{\"decision\": 1}\n</EVAL_ANSWER>"
+        )
+        eval_path.write_text(json.dumps(payload))
+        issues = validate_eval_pack(workspace.root, expected_count=1)
+        assert any("data-backed task exposes the full paper" in issue for issue in issues)
+
+
+def test_allows_paper_reference_when_no_data_are_staged(tmp_path: Path) -> None:
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Example paper\nLiterature-only evidence.")
+    workspace = prepare_eval_workspace(paper.as_posix(), output=tmp_path / "work", expected_count=1)
+    _write_good_eval(workspace.root)
+    eval_path = workspace.root / "evals" / "demo_eval" / "eval.json"
+    payload = json.loads(eval_path.read_text())
+    payload["task"] = (
+        "Read source/paper.txt to make the literature-grounded decision.\n\n"
+        "Return EXACTLY:\n<EVAL_ANSWER>\n{\"decision\": 1}\n</EVAL_ANSWER>"
+    )
+    eval_path.write_text(json.dumps(payload))
+
+    assert validate_eval_pack(workspace.root, expected_count=1) == []

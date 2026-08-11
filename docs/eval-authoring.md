@@ -72,13 +72,19 @@ latch-eval-workspace/
 
 The source evidence is committed as the clean git baseline before the authoring agents run. The agents may only change eval outputs, analysis artifacts, tests, the eval manifest and the final report.
 
-## v2.4 schema-first authoring and review cards
+## v2.5 schema-first authoring, review cards, and solver evidence boundary
 
 Each prepared workspace includes `SCHEMA_CONTRACT.json`, a machine-readable first-write template for `eval.json`, `calibration.json`, `manifest.json`, and the required `REPORT.md` review-card fields. The authoring objective requires Codex to read it before creating outputs and to run the full deterministic gate itself before returning the implementation report. The goal is to fix simple shape/test mistakes inside the first implementation phase instead of spending an outer correction round on known mechanical errors.
 
 The report contract now requires one review card per eval with explicit `Capability`, `Scientific decision`, `Ground truth`, `Load-bearing failure mode`, `Grader`, `Expected naive failure`, `Confidence`, `Open risks`, and `Source interpretation / tension` fields. The final field must either state `No material tension identified` or describe a concrete tension between the data-derived oracle and the source paper's interpretation; placeholders such as TBD/None/N/A are rejected.
 
 The contract also recommends diversity among wrong-answer patterns when multiple scientifically distinct failure modes exist, but this is intentionally a soft rule: binary scientific decisions are not forced to invent artificial answer diversity.
+
+### Data-backed solver evidence boundary
+
+When `source/source_manifest.json` contains one or more staged data records, the full paper is **author/reviewer-only**. `eval.json.task` may point the solver to files under `source/data/`, but must not point to `source/paper.txt`, the staged original paper file, or the paper source origin URL/path. This prevents a data-analysis eval from collapsing into paper recall when the results narrative states the graded conclusion directly.
+
+The validator derives the blocked paper references from `source/source_manifest.json` and rejects the task deterministically. If a data-backed capability genuinely requires textual context, stage a narrowly curated excerpt as explicit evidence rather than exposing the complete results narrative. Literature-only evals with no staged data are not subject to this restriction.
 
 ## What is enforced
 
@@ -96,6 +102,7 @@ The deterministic profile rejects incomplete packs and asks the normal Autopilot
 - deterministic tests;
 - manifest/grader consistency across the complete pack;
 - a complete `REPORT.md` review card per eval, including confidence, open risks, and an explicit source-interpretation/tension statement.
+- for data-backed packs, no solver task may expose the full staged paper, its extracted `paper.txt`, or the paper origin; the task must require work from staged data or a deliberately curated evidence excerpt.
 
 
 
