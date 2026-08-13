@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dev-autopilot-evals"
+version = "0.1.0"
+description = "Paper-to-eval authoring companion for the Dev Autopilot orchestrator"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Rafael Soler Ortuño" }]
+keywords = ["agents", "benchmarks", "evals", "latch", "reproducibility", "scientific-software"]
+dependencies = [
+    "dev-autopilot>=0.6,<1",
+    "PyYAML>=6,<7",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/rsolerortuno/dev-autopilot"
+Repository = "https://github.com/rsolerortuno/dev-autopilot"
+Issues = "https://github.com/rsolerortuno/dev-autopilot/issues"
+
+[project.optional-dependencies]
+# PDF ingestion. Without it, only text/HTML/Markdown sources can be staged.
+pdf = ["pypdf>=5,<7"]
+# Required by the final `gate` step, which executes the generated pytest suite.
+test = ["pytest>=8"]
+# Executes calibration answers through the real public graders instead of the
+# small built-in fail-closed fallback.
+latch = ["latch-eval-tools"]
+dev = [
+    "build>=1.2",
+    "mypy>=1.11",
+    "pypdf>=5,<7",
+    "pytest>=8",
+    "pytest-cov>=6",
+    "ruff>=0.8",
+    "setuptools>=77",
+    "types-PyYAML>=6",
+    "wheel>=0.44",
+]
+
+[project.scripts]
+dev-autopilot-eval = "dev_autopilot_evals.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+dev_autopilot_evals = ["py.typed"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 130
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# authoring.py is mostly prompt and guide prose: the authoring standard, the
+# project objective and the scientific invariants are flowing sentences handed
+# verbatim to the agents. Hard-wrapping them would change the text the agents
+# read, so line length is not enforced on this module's string data.
+"src/dev_autopilot_evals/authoring.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["yaml", "pypdf", "latch_eval_tools.*"]
+ignore_missing_imports = true
