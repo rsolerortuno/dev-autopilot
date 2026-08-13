@@ -55,6 +55,25 @@ from dev_autopilot.states import PAUSED_STATES, TERMINAL_STATES, WorkflowState
 ParsedT = TypeVar("ParsedT")
 
 
+def _current_diff_review_approvals(
+    evidence_items: list[dict[str, Any]],
+    diff_sha256: str,
+) -> tuple[bool, bool]:
+    """Return whether AGY passed and Claude approved this exact diff."""
+    agy_passed = False
+    claude_approved = False
+    for item in evidence_items:
+        payload = item.get("payload")
+        if not isinstance(payload, dict) or payload.get("diff_sha256") != diff_sha256:
+            continue
+        role = payload.get("role")
+        if role == ReviewerRole.AGY.value and payload.get("passed") is True:
+            agy_passed = True
+        if role == ReviewerRole.CLAUDE.value and payload.get("decision") == ReviewDecision.APPROVE.value:
+            claude_approved = True
+    return agy_passed, claude_approved
+
+
 class Orchestrator:
     """Coordinate deterministic gates, independent agents and M02/M03 evidence."""
 
@@ -417,7 +436,12 @@ class Orchestrator:
             report = AuditReport.from_dict(cached)
         else:
             result = self.agy.execute(
-                task="Adversarially audit the implementation",
+                task=(
+                    "Adversarially audit the implementation on the current diff. "
+                    "If the supplied findings contain OPEN or INVALIDATED items, verify each "
+                    "claimed correction against the current repository evidence rather than "
+                    "assuming the implementer fixed it."
+                ),
                 repository=Path(run.job.repository),
                 context=self._agent_context(run),
                 output_contract=AUDIT_CONTRACT,
@@ -464,7 +488,11 @@ class Orchestrator:
             now=self.clock.now(),
         )
         result = self.claude_reviewer.execute(
-            task="Independently review the implementation and all persisted findings",
+            task=(
+                "Independently review the implementation and all persisted findings on the "
+                "current diff. Verify that every prior blocking finding is actually resolved "
+                "on this diff. Do not approve because an earlier diff was approved."
+            ),
             repository=Path(run.job.repository),
             context=self._agent_context(run),
             output_contract=REVIEW_CONTRACT,
@@ -521,7 +549,13 @@ class Orchestrator:
                 "Correct every OPEN or INVALIDATED blocking finding and every "
                 "deterministic gate failure recorded in the supplied recent "
                 "events. Use the exact validator stdout/stderr as the correction "
-                "contract. Do not invent replacement paths or deliverables."
+                "contract. Do not invent replacement paths or deliverables. "
+                "IMPORTANT REPORTING CONTRACT: ImplementationReport.changed_paths is "
+                "CUMULATIVE, not phase-local. Before returning the final JSON, inspect "
+                "the Git working tree and report the complete sorted union of every "
+                "currently modified, staged, and untracked repo-relative path versus "
+                "HEAD, including files created in earlier implementation phases even "
+                "when this correction did not edit them."
             ),
             repository=Path(run.job.repository),
             context=self._agent_context(run),
@@ -540,6 +574,25 @@ class Orchestrator:
                 failure_class=failure.error_class,
             )
         final_diff = self.commands.diff_sha256(repository=Path(run.job.repository))
+        agy_passed, claude_approved = _current_diff_review_approvals(
+            self.evidence.list(run.run_id, kind="review"),
+            final_diff,
+        )
+        missing_approvals: list[str] = []
+        if run.job.review.require_agy and not agy_passed:
+            missing_approvals.append("AGY PASS")
+        if not claude_approved:
+            missing_approvals.append("Claude APPROVE")
+        if missing_approvals:
+            return self.engine.fail(
+                run.run_id,
+                ErrorClass.SCIENTIFIC_DECISION_REQUIRED,
+                (
+                    "final diff is missing required same-diff review approval(s): "
+                    + ", ".join(missing_approvals)
+                    + f"; final_diff_sha256={final_diff}"
+                ),
+            )
         self.ledger.invalidate_stale(
             run.run_id,
             milestone_id=run.job.evidence.milestone_id,

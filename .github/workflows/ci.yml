@@ -56,6 +56,63 @@ jobs:
       - name: Reject whitespace errors
         run: git diff --check
 
+  companion-evals:
+    name: dev-autopilot-evals
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: packages/dev-autopilot-evals
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install the core first, then the companion
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ../..
+          python -m pip install -e '.[dev]'
+      - name: Test
+        run: pytest -q
+      - name: Strict mypy
+        run: mypy
+      - name: Build distribution
+        run: python -m build --no-isolation
+      - name: Fresh-wheel smoke test
+        run: |
+          python -m venv /tmp/dev-autopilot-evals-wheel
+          /tmp/dev-autopilot-evals-wheel/bin/python -m pip install --upgrade pip
+          /tmp/dev-autopilot-evals-wheel/bin/python -m pip install ../.. dist/*.whl
+          /tmp/dev-autopilot-evals-wheel/bin/dev-autopilot-eval --help
+          /tmp/dev-autopilot-evals-wheel/bin/python -m pip check
+      - name: End-to-end wiring smoke test against the unmodified core CLI
+        run: |
+          set -euo pipefail
+          workdir=$(mktemp -d)
+          printf 'Treated mean 42.0 vs control mean 60.0 across 3 replicates.\n' > "$workdir/paper.txt"
+          dev-autopilot-eval prepare "$workdir/paper.txt" --out "$workdir/ws" --count 1 --json
+          # --fake exercises the charter, the subprocess boundary and the
+          # validator without spending agent calls. It authors no evals, so the
+          # validator is expected to report an empty pack and exit 1.
+          status=0
+          dev-autopilot-eval rerun "$workdir/ws" --fake --json > "$workdir/out.json" || status=$?
+          cat "$workdir/out.json"
+          test "$status" -eq 1
+          python -c "
+          import json, sys
+          payload = json.load(open(sys.argv[1]))
+          assert payload['autopilot_exit_code'] == 0, payload
+          assert payload['project_status'].startswith('READY_FOR_HUMAN'), payload
+          assert payload['validation_passed'] is False, payload
+          " "$workdir/out.json"
+
   dependency-audit:
     runs-on: ubuntu-latest
     steps:

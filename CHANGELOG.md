@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Both built-in Claude bridges now default to `claude -p --permission-mode auto`
+  instead of `plan`. `plan` is deliberately read-only, so the reviewer and
+  supervisor could not run the project's gates or write the JSON decision the
+  output contract requires. Claude correctly reported the conflict and asked for
+  human input, the bridge exited non-zero, and every attempt was retried until
+  the budget was exhausted — surfacing as `CLAUDE_REVIEW -> FAILED | retry budget
+  exhausted for claude-reviewer` rather than as a permission problem. The
+  permission mode is now overridable on its own via
+  `DEV_AUTOPILOT_CLAUDE_PERMISSION_MODE` for Claude CLIs that predate `auto`, and
+  the bridge prints an explicit hint when a `plan`-mode Claude returns prose
+  instead of JSON.
+
+### Added
+
+- `dev-autopilot-evals`, a companion distribution under
+  `packages/dev-autopilot-evals/`, that turns a scientific paper plus optional
+  data into a validated Latch-style eval pack. It depends on Dev Autopilot and
+  drives it through the public `dev-autopilot project start --json` command; the
+  core keeps no knowledge of papers, PDFs, Latch or evals, and its entry points,
+  dependencies and orchestration are unchanged. A test asserts mechanically that
+  the companion imports no Dev Autopilot internals.
+
+### Changed
+
+- The implementation output contract now states that `changed_paths` is
+  cumulative for the working tree rather than phase-local, so a correction round
+  no longer under-reports files created in earlier phases.
+- `FINAL_TESTS` now verifies that the exact final diff carries the required
+  same-diff approvals (AGY pass when enabled, plus a Claude `APPROVE`) before a
+  run can reach `READY_FOR_HUMAN_REVIEW`, instead of relying on approvals granted
+  to an earlier diff.
+- The AGY and Claude review prompts now ask explicitly for prior blocking
+  findings to be re-verified against the current diff.
+
 ## 0.6.0 - 2026-08-10
 
 ### Real-project execution hardening

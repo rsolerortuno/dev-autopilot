@@ -11,10 +11,29 @@ import subprocess
 import sys
 from pathlib import Path
 
+DEFAULT_CLAUDE_PERMISSION_MODE = "auto"
+
+
+def _claude_permission_mode() -> str:
+    """Return the permission mode used by the built-in Claude bridges.
+
+    Dev Autopilot drives Claude non-interactively and requires it to run the
+    project's own test/gate commands and write a JSON decision file. ``plan``
+    is deliberately read-only and makes Claude stop for human input instead of
+    honouring the output contract, which burns the whole retry budget. ``auto``
+    is the non-interactive mode: routine operations proceed and dangerous ones
+    are still classified and blocked. The mode stays overridable for older
+    Claude CLIs that do not implement ``auto``.
+    """
+
+    mode = os.environ.get("DEV_AUTOPILOT_CLAUDE_PERMISSION_MODE", "").strip()
+    return mode or DEFAULT_CLAUDE_PERMISSION_MODE
+
 
 def _default_agent_command(env_name: str) -> list[str] | None:
     """Return the built-in command for a supported agent bridge."""
 
+    claude_permission_mode = _claude_permission_mode()
     defaults: dict[str, tuple[str, ...]] = {
         "DEV_AUTOPILOT_CODEX_COMMAND": (
             "codex",
@@ -31,13 +50,13 @@ def _default_agent_command(env_name: str) -> list[str] | None:
             "claude",
             "-p",
             "--permission-mode",
-            "plan",
+            claude_permission_mode,
         ),
         "DEV_AUTOPILOT_CLAUDE_SUPERVISOR_COMMAND": (
             "claude",
             "-p",
             "--permission-mode",
-            "plan",
+            claude_permission_mode,
         ),
     }
 
@@ -129,6 +148,13 @@ def main(argv: list[str] | None = None) -> int:
         output = _extract_json(completed.stdout)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
+        if command[:1] == ["claude"] and "plan" in command:
+            print(
+                "hint: the Claude bridge is running with --permission-mode plan, which is "
+                "read-only and cannot satisfy the output contract; use "
+                "--permission-mode auto (see DEV_AUTOPILOT_CLAUDE_PERMISSION_MODE)",
+                file=sys.stderr,
+            )
         return 3
     output_path.write_text(json.dumps(output, sort_keys=True), encoding="utf-8")
     return 0
