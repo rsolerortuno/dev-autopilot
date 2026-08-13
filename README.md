@@ -81,6 +81,40 @@ python -m pip install -e '.[dev,drive]'
 
 Python 3.11 or newer is required.
 
+## Companion packages
+
+Domain-specific workflows ship as separate distributions that depend on Dev
+Autopilot and drive it through its public CLI. The orchestrator itself stays
+general and gains no knowledge of any particular domain.
+
+| Package | Purpose |
+| --- | --- |
+| [`dev-autopilot-evals`](packages/dev-autopilot-evals/README.md) | Turn a scientific paper plus optional data into a validated Latch-style eval pack |
+
+```bash
+python -m pip install -e 'packages/dev-autopilot-evals[dev]'
+dev-autopilot-eval build paper.pdf --data supplement.csv --out eval-workspace --count 3
+```
+
+## Agent commands and permission modes
+
+The bridge ships built-in defaults for each agent, so
+`DEV_AUTOPILOT_CODEX_COMMAND`, `DEV_AUTOPILOT_AGY_COMMAND`,
+`DEV_AUTOPILOT_CLAUDE_REVIEW_COMMAND` and
+`DEV_AUTOPILOT_CLAUDE_SUPERVISOR_COMMAND` only need setting to override them.
+
+Both Claude bridges default to `claude -p --permission-mode auto`. `auto` is the
+non-interactive mode: routine operations proceed and dangerous ones are still
+classified and blocked. Do **not** use `--permission-mode plan` here — it is
+deliberately read-only, so Claude cannot run the project's gates or write the
+JSON decision the output contract requires, and every attempt burns a retry.
+
+For a Claude CLI too old to implement `auto`, override the mode alone:
+
+```bash
+export DEV_AUTOPILOT_CLAUDE_PERMISSION_MODE=acceptEdits
+```
+
 ## Continuous no-questions project
 
 Create a charter:
