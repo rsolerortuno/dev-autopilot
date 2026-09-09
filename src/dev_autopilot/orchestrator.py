@@ -42,6 +42,7 @@ from dev_autopilot.models import (
     RunRecord,
 )
 from dev_autopilot.retries import Clock, RetryScheduler, SystemClock
+from dev_autopilot.retrieval import RetrievalIndex
 from dev_autopilot.review import (
     AUDIT_CONTRACT,
     IMPLEMENTATION_CONTRACT,
@@ -764,6 +765,16 @@ class Orchestrator:
             "findings": findings,
             "events": self.store.list_events(run.run_id)[-30:],
         }
+        if run.job.gates.retrieve_context:
+            try:
+                index = RetrievalIndex.build(Path(run.job.repository))
+                context["retrieved_context"] = index.search(
+                    Path(run.job.repository),
+                    run.job.objective,
+                    max_context_bytes=min(16_000, run.job.gates.max_context_bytes // 4),
+                )
+            except (ValueError, OSError):
+                context["retrieved_context"] = {"available": False, "reason": "snapshot unavailable or changed"}
         if len(json.dumps(context, sort_keys=True).encode()) > run.job.gates.max_context_bytes:
             context["events"] = context["events"][-5:]  # type: ignore[index]
             context["findings"] = findings[-20:]

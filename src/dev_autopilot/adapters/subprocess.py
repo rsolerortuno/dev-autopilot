@@ -133,7 +133,7 @@ class ExecutableAgentAdapter:
     def __init__(self, name: str, settings: AgentCommand, allowed_environment: tuple[str, ...] = ()) -> None:
         self.name = name
         self.settings = settings
-        self.allowed_environment = allowed_environment
+        self.allowed_environment = tuple(dict.fromkeys((*settings.allowed_environment, *allowed_environment)))
 
     @staticmethod
     def _git_run(repository: Path, *args: str) -> str:
@@ -269,9 +269,7 @@ class ExecutableAgentAdapter:
                         self._terminate_group(process)
                         return ExecutionResult(
                             status=ResultStatus.SECURITY,
-                            summary=redact(
-                                f"{self.name} modified git metadata while git writes were disabled", redactions
-                            ),
+                            summary=redact(f"{self.name} modified git metadata while git writes were disabled", redactions),
                             stdout=redact(stdout, redactions),
                             stderr=redact(stderr, redactions),
                         )
