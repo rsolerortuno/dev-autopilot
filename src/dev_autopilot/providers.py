@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import suppress
 from typing import Protocol
 from uuid import uuid4
 
@@ -32,7 +33,8 @@ class BudgetedAgentAdapter:
 
     def execute(self, *, task: str, repository: Path, context: dict[str, object], output_contract: str) -> ExecutionResult:
         call_id = str(uuid4())
-        estimated_micro_usd = int(context.get("estimated_micro_usd", 0))
+        estimated_value = context.get("estimated_micro_usd", 0)
+        estimated_micro_usd = estimated_value if isinstance(estimated_value, int) else 0
         actual_micro_usd = context.get("actual_micro_usd")
         actual_micro_usd = actual_micro_usd if isinstance(actual_micro_usd, int) else None
         started = now()
@@ -41,20 +43,16 @@ class BudgetedAgentAdapter:
             result = self.adapter.execute(task=task, repository=repository, context=context, output_contract=output_contract)
             self.budget.settle(call_id, actual_micro_usd)
             status = getattr(result, "status", "unknown")
-            try:
+            with suppress(Exception):
                 emit_trace(
                     self.sink,
                     TraceRecord(call_id, self.provider, self.model, str(status), (now() - started) * 1000, actual_micro_usd),
                 )
-            except Exception:
-                pass
             return result
         except Exception:
-            try:
+            with suppress(Exception):
                 emit_trace(
                     self.sink,
                     TraceRecord(call_id, self.provider, self.model, "error", (now() - started) * 1000, actual_micro_usd),
                 )
-            except Exception:
-                pass
             raise

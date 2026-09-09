@@ -87,7 +87,7 @@ class BudgetStore:
         with self._lock, self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             self._configure_tx(db, config)
-            prior = db.execute("SELECT call_id FROM budget_reservation WHERE call_id=?", (call_id,)).fetchone()
+            prior = db.execute("SELECT * FROM budget_reservation WHERE call_id=?", (call_id,)).fetchone()
             if prior:
                 if (prior["project_id"], prior["milestone_id"], prior["estimated_micro_usd"]) != (
                     config.project_id,
