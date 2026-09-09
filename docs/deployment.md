@@ -4,7 +4,12 @@ The `Dockerfile` builds a wheel in a builder stage, installs it in a runtime
 stage, and runs as the unprivileged `autopilot` user. Builds require an
 explicit immutable base-image digest. Obtain the digest from the registry
 policy used by your deployment and pass `PYTHON_IMAGE_DIGEST=sha256:...`.
-Docker runtime verification is unavailable in the offline test environment.
+Git is installed because baseline capture inspects repository metadata, and the
+image healthcheck uses the read-only probe. Docker runtime verification is
+unavailable in the offline test environment. Python and OS dependency ranges
+are intentionally not bit-reproducible without a checked-in lockfile; pin and
+verify a lockfile in the deployment pipeline when byte-for-byte reproduction
+is required.
 
 Persist the SQLite database and queue storage under `/var/lib/dev-autopilot`
 using a durable volume. Run the read-only probe against an existing database:
