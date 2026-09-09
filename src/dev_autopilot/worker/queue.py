@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Concatenate, ParamSpec, TypeVar, cast
 from uuid import uuid4
 
 from dev_autopilot.storage.backend import LocalStorageBackend
@@ -38,8 +39,12 @@ class LostLeaseError(QueueError):
     pass
 
 
-def _coordinated(method):
-    def wrapped(self, *args, **kwargs):
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _coordinated(method: Callable[Concatenate[DriveQueue, P], R]) -> Callable[Concatenate[DriveQueue, P], R]:
+    def wrapped(self: DriveQueue, /, *args: P.args, **kwargs: P.kwargs) -> R:
         with self.coordinator.lock():
             return method(self, *args, **kwargs)
 
@@ -61,13 +66,8 @@ class DriveQueue:
         self.root = root.rstrip("/")
         if coordinator is None and isinstance(backend, LocalStorageBackend):
             coordinator = SQLiteCoordinator(backend.root / ".queue-coordination.sqlite3")
-        if (
-            coordinator is None
-            and backend.__class__.__name__ == "DriveStorageBackend"
-            and not single_writer
-            and not getattr(backend, "_injected_service", False)
-        ):
-            raise QueueError("Drive queue requires a shared SQLite coordinator or explicit single_writer=True")
+        if coordinator is None and not isinstance(backend, LocalStorageBackend) and not single_writer:
+            raise QueueError("non-local queue requires a shared SQLite coordinator or explicit single_writer=True")
         self.coordinator = coordinator or SQLiteCoordinator(Path(".dev-autopilot-queue-coordination.sqlite3"))
 
     def fork(self) -> DriveQueue:
@@ -421,6 +421,13 @@ class DriveQueue:
                 continue
             raw = self._get(key)
             job = WorkerJob.from_dict(raw.get("job", raw))
+            if any(
+                self.backend.exists(self._terminal_key(status, job.job_id))
+                for status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.BLOCKED)
+            ):
+                for stale in (key, self._lease_key(job.job_id), self._heartbeat_key(job.job_id)):
+                    self.backend.delete(stale)
+                continue
             attempt = int(raw.get("attempt", 0))
             lease_key = self._lease_key(job.job_id)
             expired = True

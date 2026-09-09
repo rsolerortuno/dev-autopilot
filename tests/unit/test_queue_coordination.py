@@ -5,7 +5,7 @@ import pytest
 
 from dev_autopilot.storage.backend import LocalStorageBackend
 from dev_autopilot.worker.coordination import SQLiteCoordinator
-from dev_autopilot.worker.job import ResourceClass, WorkerJob
+from dev_autopilot.worker.job import JobStatus, ResourceClass, WorkerJob
 from dev_autopilot.worker.queue import DriveQueue, LostLeaseError, QueueError
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
@@ -65,3 +65,32 @@ def test_remote_drive_backend_requires_explicit_coordination():
     backend = type("DriveStorageBackend", (), {"_injected_service": False})()
     with pytest.raises(QueueError, match="shared SQLite coordinator"):
         DriveQueue(backend)
+
+
+def test_terminal_publication_survives_cleanup_crash(tmp_path):
+    class CrashOnCleanup(LocalStorageBackend):
+        def delete(self, key):
+            if not self.exists("devautopilot/completed/crash.json"):
+                return super().delete(key)
+            raise OSError("simulated crash after terminal publication")
+
+    backend = CrashOnCleanup(tmp_path / "store")
+    queue = DriveQueue(backend, coordinator=SQLiteCoordinator(tmp_path / "coordination.sqlite3"))
+    queue.submit(_job("crash"), now=T0)
+    claim = queue.claim("cpu", "worker", ttl_seconds=10, now=T0)
+    assert claim is not None
+    with pytest.raises(OSError, match="simulated crash"):
+        queue.complete(claim, now=T0 + timedelta(seconds=1))
+    assert queue.job_status("crash")["status"] == "COMPLETED"
+
+
+def test_reclaim_cleans_stale_running_record_without_resurrecting_terminal(tmp_path):
+    backend = LocalStorageBackend(tmp_path / "store")
+    queue = DriveQueue(backend, coordinator=SQLiteCoordinator(tmp_path / "coordination.sqlite3"))
+    queue.submit(_job("stale"), now=T0)
+    claim = queue.claim("cpu", "worker", ttl_seconds=1, now=T0)
+    assert claim is not None
+    backend.put_json(queue._terminal_key(JobStatus.COMPLETED, "stale"), {"status": "COMPLETED"})
+    assert queue.reclaim_expired(now=T0 + timedelta(seconds=2)) == ()
+    assert queue.job_status("stale")["status"] == "COMPLETED"
+    assert not backend.exists(queue._running_key("stale"))
