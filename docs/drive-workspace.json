@@ -1,0 +1,14 @@
+{
+  "parent_folder_id": "1o5gfkBSUw32YOoqc555yLUE3YCQYV8F_",
+  "project_folder_id": "1PAkI23Ajzu5QcmcI8quw_Xfd6-4UhROO",
+  "folders": {
+    "artefactos": "1ZokW2Ik6MTme5VQS0L055_5W8zgF13Ri",
+    "checkpoints": "1x_l861WLAD3DuVUMiDOvKedvgdDPxMVX",
+    "evidencias": "1K_rubbpITyaOCZxLzkL-Rl6DSm1hb_Fe",
+    "notebooks": "1jykDRZgRmH_zIM4ubV498XURJhstxtj4"
+  },
+  "notebook_file_id": null,
+  "notebook_sha256": null,
+  "transfer_policy": "stream/resumable or verified parts; SHA-256 readback",
+  "worker_limit_until_atomic_coordination": 1
+}

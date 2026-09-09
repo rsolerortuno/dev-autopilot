@@ -1,0 +1,87 @@
+{
+  "target": "1.0.0",
+  "base_sha": "d76bc5fd8dd14798c8bf509416557cdaed71d36b",
+  "integration_branch": "implementation/v1",
+  "release_publication": "requires user final review",
+  "tasks": {
+    "T01": {
+      "status": "in_progress",
+      "branch": "agent/luna-platform",
+      "review": "pending"
+    },
+    "T02": {
+      "status": "in_progress",
+      "branch": "agent/luna-release",
+      "review": "pending"
+    },
+    "T03": {
+      "status": "in_progress",
+      "branch": "agent/luna-contracts",
+      "review": "pending"
+    },
+    "T04": {
+      "status": "pending"
+    },
+    "T05": {
+      "status": "pending"
+    },
+    "T06": {
+      "status": "pending"
+    },
+    "T07": {
+      "status": "pending"
+    },
+    "T08": {
+      "status": "pending"
+    },
+    "T09": {
+      "status": "pending"
+    },
+    "T10": {
+      "status": "pending"
+    },
+    "T11": {
+      "status": "pending"
+    },
+    "T12": {
+      "status": "pending"
+    },
+    "T13": {
+      "status": "pending"
+    },
+    "T14": {
+      "status": "pending"
+    },
+    "T15": {
+      "status": "pending"
+    },
+    "T16": {
+      "status": "pending"
+    },
+    "T17": {
+      "status": "pending"
+    },
+    "T18": {
+      "status": "pending"
+    },
+    "T19": {
+      "status": "pending"
+    },
+    "T20": {
+      "status": "pending"
+    },
+    "T21": {
+      "status": "pending"
+    },
+    "T22": {
+      "status": "pending"
+    }
+  },
+  "external_checks": {
+    "linux_runtime": "WSL not installed; Docker not found",
+    "live_providers": "not run",
+    "colab": "not authenticated or allocated",
+    "eight_hour_soak": "not run",
+    "human_portfolio_defense": "pending owner"
+  }
+}
