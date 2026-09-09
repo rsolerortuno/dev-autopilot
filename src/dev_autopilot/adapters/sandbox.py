@@ -26,6 +26,15 @@ _UNSAFE_NETWORK = re.compile(r"^(?:host|container(?::.*)?)$")
 PopenFactory = Callable[..., subprocess.Popen[str]]
 
 
+def _runtime_identity() -> tuple[int, int]:
+    if os.name != "posix" or not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+        raise RuntimeError("sandbox execution requires POSIX uid/gid support")
+    uid, gid = os.getuid(), os.getgid()
+    if uid == 0 or gid == 0:
+        raise RuntimeError("sandbox refuses to run as root")
+    return uid, gid
+
+
 class DockerAgentAdapter:
     """Run an agent in a pinned, non-root, network-disabled container."""
 
@@ -75,11 +84,7 @@ class DockerAgentAdapter:
             raise ValueError("sandbox mount paths must not be symlinks")
         if not git_dir.is_dir():
             raise ValueError("sandbox requires a standalone checkout with a .git directory; linked worktrees are unsupported")
-        if os.name != "posix" or not hasattr(os, "getuid") or not hasattr(os, "getgid"):
-            raise RuntimeError("sandbox execution requires POSIX uid/gid support")
-        uid, gid = vars(os)["getuid"](), vars(os)["getgid"]()
-        if uid == 0 or gid == 0:
-            raise RuntimeError("sandbox refuses to run as root")
+        uid, gid = _runtime_identity()
         return [
             self.docker_binary,
             "run",
@@ -156,18 +161,6 @@ class DockerAgentAdapter:
                 context_file = root / "context.json"
                 output_dir = root / "output"
                 output_dir.mkdir()
-                # Docker writes through the bind mount as the invoking user.  A
-                # temporary directory created by a different account would
-                # otherwise make the output contract unwritable.
-                if os.name == "posix" and hasattr(os, "chown"):
-                    uid, gid = os.getuid(), os.getgid()
-                    try:
-                        os.chown(output_dir, uid, gid)
-                    except OSError as exc:
-                        return ExecutionResult(
-                            status=ResultStatus.ERROR,
-                            summary=redact(f"sandbox could not prepare output directory: {exc}", redactions),
-                        )
                 context_file.write_text(
                     json.dumps({"task": task, "context": context, "output_contract": output_contract}, sort_keys=True),
                     encoding="utf-8",
