@@ -30,6 +30,8 @@ Repository = "https://github.com/rsolerortuno/dev-autopilot"
 Issues = "https://github.com/rsolerortuno/dev-autopilot/issues"
 
 [project.optional-dependencies]
+mcp = ["mcp>=2.2,<3"]
+telemetry = ["opentelemetry-sdk>=1.30,<2"]
 dev = [
     "build>=1.2",
     "setuptools>=77",

@@ -112,7 +112,7 @@ class RetrievalIndex:
                 continue
             matches.append(candidate)
         result: dict[str, object] = {"trust": "untrusted_repository_data", "commit": self.commit, "matches": matches}
-        if len(json.dumps(result).encode()) > max_context_bytes:
+        if len(json.dumps(result, ensure_ascii=False).encode()) > max_context_bytes:
             raise ValueError("context budget too small for retrieval envelope")
         if _snapshot(root) != self.commit:
             raise ValueError("repository changed during retrieval")
