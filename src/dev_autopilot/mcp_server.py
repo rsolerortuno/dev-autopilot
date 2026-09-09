@@ -15,6 +15,8 @@ SCOPES = frozenset({"repository:read", "runs:read", "evidence:read"})
 
 
 def create_server(repository: Path, database: Path, *, scopes: frozenset[str] = SCOPES) -> MCPServer:
+    if repository.is_symlink():
+        raise ValueError("repository root must not be a symlink")
     root = repository.resolve(strict=True)
     db = database.resolve(strict=True)
     if not root.is_dir() or not db.is_file() or not scopes <= SCOPES:

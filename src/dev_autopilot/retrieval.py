@@ -53,28 +53,34 @@ class RetrievalIndex:
     def build(cls, repository: Path, *, max_file_bytes: int = 256_000, max_total_bytes: int = 8_000_000) -> RetrievalIndex:
         if max_file_bytes <= 0 or max_total_bytes <= 0:
             raise ValueError("retrieval limits must be positive")
+        if repository.is_symlink():
+            raise ValueError("repository root must not be a symlink")
         root = repository.resolve(strict=True)
         commit = _snapshot(root)
         passages: list[Passage] = []
         total = 0
-        for raw in sorted(_git(root, "ls-files", "-z").split(b"\0")):
+        for raw in sorted(_git(root, "ls-tree", "-r", "-z", commit).split(b"\0")):
             if not raw:
                 continue
-            relative = raw.decode("utf-8", errors="strict")
+            metadata, encoded_path = raw.split(b"\t", 1)
+            mode, kind, object_id = metadata.split()
+            if mode not in {b"100644", b"100755"} or kind != b"blob":
+                continue
+            relative = encoded_path.decode("utf-8", errors="strict")
             path = root / relative
             if path.suffix.lower() not in _EXTENSIONS:
                 continue
             if any(part.startswith(".") or _SECRET_NAME.search(part) for part in Path(relative).parts):
                 continue
-            if path.is_symlink() or not path.resolve().is_relative_to(root) or not path.is_file():
+            # Read immutable Git objects, never a mutable working-tree file.
+            blob = object_id.decode("ascii")
+            size = int(_git(root, "cat-file", "-s", blob))
+            if size > max_file_bytes:
                 continue
-            with path.open("rb") as stream:
-                data = stream.read(max_file_bytes + 1)
-            if len(data) > max_file_bytes:
-                continue
-            total += len(data)
+            total += size
             if total > max_total_bytes:
                 raise ValueError("repository exceeds retrieval byte budget")
+            data = _git(root, "cat-file", "blob", blob)
             try:
                 content = data.decode("utf-8")
             except UnicodeDecodeError:

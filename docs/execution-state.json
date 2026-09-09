@@ -5,61 +5,74 @@
   "release_publication": "requires user final review",
   "tasks": {
     "T01": {
-      "status": "in_progress",
+      "status": "implemented_pending_final_validation",
       "branch": "agent/luna-platform",
-      "review": "pending"
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T02": {
-      "status": "in_progress",
+      "status": "implemented_pending_final_validation",
       "branch": "agent/luna-release",
-      "review": "pending"
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T03": {
-      "status": "in_progress",
+      "status": "implemented_pending_final_validation",
       "branch": "agent/luna-contracts",
-      "review": "pending"
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T04": {
-      "status": "pending"
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T05": {
-      "status": "pending"
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T06": {
-      "status": "pending"
+      "status": "implementation_review",
+      "review": "Luna worktree changes undergoing correction"
     },
     "T07": {
-      "status": "pending"
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T08": {
-      "status": "pending"
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T09": {
-      "status": "pending"
+      "status": "implementation_review",
+      "review": "Luna worktree changes undergoing correction"
     },
     "T10": {
-      "status": "pending"
+      "status": "implementation_review",
+      "review": "Luna worktree changes undergoing correction"
     },
     "T11": {
-      "status": "pending"
+      "status": "implementation_review",
+      "review": "Luna worktree changes undergoing correction"
     },
     "T12": {
-      "status": "pending"
+      "status": "implementation_review",
+      "review": "Luna worktree changes undergoing correction"
     },
     "T13": {
       "status": "pending"
     },
     "T14": {
-      "status": "pending"
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T15": {
-      "status": "pending"
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T16": {
-      "status": "pending"
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
     },
     "T17": {
-      "status": "pending"
+      "status": "implementation_review",
+      "review": "Luna worktree changes undergoing correction"
     },
     "T18": {
       "status": "pending"
@@ -68,7 +81,8 @@
       "status": "pending"
     },
     "T20": {
-      "status": "pending"
+      "status": "implementation_review",
+      "review": "Luna worktree changes undergoing correction"
     },
     "T21": {
       "status": "pending"
@@ -82,6 +96,22 @@
     "live_providers": "not run",
     "colab": "not authenticated or allocated",
     "eight_hour_soak": "not run",
-    "human_portfolio_defense": "pending owner"
+    "human_portfolio_defense": "pending owner",
+    "github_write": "git unauthenticated; GitHub connector create_tree returned 403 Resource not accessible by integration",
+    "linux_ci": "pending writable GitHub connection or Linux runtime"
+  },
+  "updated_at": "2026-09-09T22:34:39.595038+00:00",
+  "integration_head": "c91fb083a40944eedf972d058a45e0881b449a98",
+  "development_version": "0.7.0.dev0",
+  "local_validation": {
+    "command": "pytest -q --cov=dev_autopilot --cov-fail-under=80",
+    "passed": 327,
+    "skipped": 1,
+    "coverage_percent": 81.45,
+    "scope": "Windows checkpoint before latest integration; Linux process-group test skipped"
+  },
+  "notebook": {
+    "remote_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
+    "sync_status": "local updated; next upload pending"
   }
 }
