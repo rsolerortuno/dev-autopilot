@@ -3,12 +3,6 @@ name: Build release artifacts
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Existing SemVer tag to validate and package
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -24,15 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - name: Confirm checked-out SHA
-        run: |
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          else
-            test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "refs/tags/${{ inputs.tag }}")"
-          fi
+        run: test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.13"
@@ -41,7 +30,7 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build
       - name: Verify tag and package versions
-        run: python scripts/check_release_metadata.py --tag "${{ inputs.tag || github.ref_name }}" --dist dist
+        run: python scripts/check_release_metadata.py --tag "${GITHUB_REF_NAME}" --dist dist
       - name: Install the wheel into a clean product environment
         run: |
           python -m venv .release-venv
