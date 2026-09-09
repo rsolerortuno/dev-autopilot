@@ -13,6 +13,7 @@ from dev_autopilot.bundle import verify_bundle
 from dev_autopilot.storage.backend import LocalStorageBackend
 from dev_autopilot.storage.reassembler import load_manifest, reassemble_from_prefix
 from dev_autopilot.storage.splitter import split_file, split_object, verify_parts
+from dev_autopilot.worker.coordination import SQLiteCoordinator
 from dev_autopilot.worker.job import WorkerJob
 from dev_autopilot.worker.queue import DriveQueue
 from dev_autopilot.worker.runner import poll_loop
@@ -32,6 +33,8 @@ def _backend(args: argparse.Namespace) -> Any:
 def _add_backend_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--store", type=Path, default=Path(".dev-autopilot/store"))
     parser.add_argument("--drive-folder", default=None, help="Drive root folder ID; uses ambient Google credentials")
+    parser.add_argument("--queue-coordinator", type=Path, help="shared single-host SQLite coordination DB for all queue writers")
+    parser.add_argument("--single-writer", action="store_true", help="acknowledge only one host writes the remote queue")
 
 
 def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -157,7 +160,11 @@ def handle(args: argparse.Namespace) -> int | None:
 
     if args.command == "colab":
         backend = _backend(args)
-        queue = DriveQueue(backend)
+        queue = DriveQueue(
+            backend,
+            coordinator=SQLiteCoordinator(args.queue_coordinator) if args.queue_coordinator else None,
+            single_writer=args.single_writer,
+        )
         if args.colab_command == "submit":
             job = WorkerJob.from_json(Path(args.job).read_text(encoding="utf-8"))
             queue.submit(job)
