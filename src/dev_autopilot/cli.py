@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sqlite3
 import sys
@@ -291,6 +292,11 @@ def main(argv: list[str] | None = None) -> int:
                 ("python", sys.version_info >= (3, 11), sys.version.split()[0]),
                 ("sqlite", sqlite3.sqlite_version_info >= (3, 35, 0), sqlite3.sqlite_version),
                 ("git", shutil.which("git") is not None, shutil.which("git") or "missing"),
+                (
+                    "worker-platform",
+                    os.name == "posix",
+                    "POSIX (Linux/WSL2 supported)" if os.name == "posix" else "unsupported native Windows; use Linux or WSL2",
+                ),
             ]
             if args.job:
                 job = load_job_configuration(args.job)

@@ -38,15 +38,24 @@ _MIN_ENV = ("PATH", "PYTHONPATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
 
 
 def _terminate_process_group(process: subprocess.Popen[str]) -> None:
+    if os.name != "posix":
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=3)
+        return
     with suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
+        vars(os)["killpg"](process.pid, signal.SIGTERM)
     try:
         process.wait(timeout=3)
         return
     except subprocess.TimeoutExpired:
         pass
     with suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGKILL)
+        vars(os)["killpg"](process.pid, vars(signal).get("SIGKILL", signal.SIGTERM))
     with suppress(subprocess.TimeoutExpired):
         process.wait(timeout=3)
 
@@ -57,6 +66,8 @@ def subprocess_executor(
     env: Mapping[str, str],
     timeout_seconds: int,
 ) -> tuple[int, str]:  # pragma: no cover - subprocess branches tested separately
+    if os.name != "posix":
+        raise RuntimeError("worker execution requires POSIX process groups; use Linux or WSL2")
     process = subprocess.Popen(
         list(command),
         cwd=workdir,
@@ -176,8 +187,11 @@ def _read_progress(path: Path) -> dict[str, Any]:
 
 
 def _available_ram_bytes() -> int:
+    if os.name != "posix":
+        return 0
     try:
-        return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_AVPHYS_PAGES"))
+        sysconf = vars(os)["sysconf"]
+        return int(sysconf("SC_PAGE_SIZE") * sysconf("SC_AVPHYS_PAGES"))
     except (AttributeError, OSError, ValueError):
         return 0
 

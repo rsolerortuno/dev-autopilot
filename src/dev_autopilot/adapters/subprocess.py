@@ -170,12 +170,22 @@ class ExecutableAgentAdapter:
     @staticmethod
     def _terminate_group(process: subprocess.Popen[str]) -> None:
         """Boundedly terminate the complete session, descendants and pipes."""
+        if os.name != "posix":
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                with suppress(subprocess.TimeoutExpired):
+                    process.wait(timeout=2)
+            return
         try:
-            os.killpg(process.pid, signal.SIGTERM)
+            killpg = vars(os)["killpg"]
+            killpg(process.pid, signal.SIGTERM)
             process.wait(timeout=2)
         except (ProcessLookupError, subprocess.TimeoutExpired):
             with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
+                vars(os)["killpg"](process.pid, vars(signal).get("SIGKILL", signal.SIGTERM))
             with suppress(subprocess.TimeoutExpired):
                 process.wait(timeout=2)
         finally:
