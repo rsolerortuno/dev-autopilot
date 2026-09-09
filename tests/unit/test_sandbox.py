@@ -21,7 +21,10 @@ def test_image_must_be_immutable_digest(image):
         DockerAgentAdapter("a", AgentCommand(command=("agent",)), image=image)
 
 
-def test_command_contains_isolation_and_mount_policy(tmp_path: Path):
+def test_command_contains_isolation_and_mount_policy(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("dev_autopilot.adapters.sandbox.os.name", "posix")
+    monkeypatch.setattr("dev_autopilot.adapters.sandbox.os.getuid", lambda: 1000)
+    monkeypatch.setattr("dev_autopilot.adapters.sandbox.os.getgid", lambda: 1000)
     (tmp_path / ".git").mkdir()
     command = adapter()._docker_command(tmp_path, tmp_path / "context.json", tmp_path / "output", "container")
     joined = " ".join(command)
@@ -50,6 +53,9 @@ def test_missing_docker_is_structured_error(tmp_path: Path, monkeypatch):
 
 
 def test_timeout_removes_container(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("dev_autopilot.adapters.sandbox.os.name", "posix")
+    monkeypatch.setattr("dev_autopilot.adapters.sandbox.os.getuid", lambda: 1000)
+    monkeypatch.setattr("dev_autopilot.adapters.sandbox.os.getgid", lambda: 1000)
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr("dev_autopilot.adapters.sandbox.shutil.which", lambda _: "docker")
     calls = []
