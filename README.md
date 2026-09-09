@@ -328,7 +328,10 @@ See `VALIDATION.md` for the exact local evidence included with this release.
   output namespaces protect publication. Duplicate computation can still occur
   during a severe network partition in which a worker cannot observe the lease.
 - Only exact byte-range splitting is implemented in M05.
-- The local agent runtime is not yet container-isolated.
+- The local agent runtime remains unsandboxed unless the opt-in Docker adapter is
+  configured. Docker isolation requires a Linux host, an installed image pinned
+  by digest, and a live smoke test; this repository does not claim that runtime
+  enforcement from its offline tests.
 
 These limitations are explicit so a review bundle never claims a stronger
 operational guarantee than the evidence supports.
