@@ -35,3 +35,26 @@ def test_harness_records_missing_output_and_nonzero() -> None:
     failed = run_task(task, [sys.executable, "-c", "raise SystemExit(2)"])
     assert missing.success is False and missing.timed_out is False
     assert failed.success is False and failed.return_code == 2
+
+
+def test_code_dataset_is_immutable_shape_and_broken_candidate_fails() -> None:
+    tasks = load_tasks(dataset="tasks-code-v1")
+    assert len(tasks) == 30
+    assert {task.category for task in tasks} == {"numerical", "data", "software"}
+    assert {task.split for task in tasks} == {"train", "holdout"}
+    result = run_task(tasks[0], [sys.executable, "-c", "pass"])
+    assert result.success is False
+
+
+def test_code_dataset_known_solution_passes_hidden_cases(tmp_path) -> None:
+    task = load_tasks(dataset="tasks-code-v1")[0]
+    command = [sys.executable, "-c", "from pathlib import Path; Path('solution.py').write_text('def solve(inputs):\\n    return inputs\\n')"]
+    result = run_task(task, command)
+    assert result.success is True
+
+
+def test_code_oracle_timeout_is_failure() -> None:
+    task = load_tasks(dataset="tasks-code-v1")[0]
+    command = [sys.executable, "-c", "from pathlib import Path; Path('solution.py').write_text('def solve(inputs):\\n    while True: pass\\n')"]
+    result = run_task(task, command)
+    assert result.success is False

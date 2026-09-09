@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import os
 import signal
@@ -38,8 +39,8 @@ class EvalResult:
     error: str | None
 
 
-def load_tasks(path: Path | None = None) -> list[Task]:
-    source = path or Path(__file__).with_name("data").joinpath("tasks-v1.json")
+def load_tasks(path: Path | None = None, dataset: str = "tasks-v1") -> list[Task]:
+    source = path or Path(__file__).with_name("data").joinpath(f"{dataset}.json")
     raw = json.loads(source.read_text(encoding="utf-8"))
     return [Task(**item) for item in raw["tasks"]]
 
@@ -53,6 +54,20 @@ def _oracle(task: Task, task_dir: Path) -> bool:
         return bool(output.read_text(encoding="utf-8").strip() == task.oracle["value"])
     if kind == "json":
         return bool(json.loads(output.read_text(encoding="utf-8")) == task.oracle["value"])
+    if kind == "python_function":
+        payload = json.dumps(task.oracle["cases"], separators=(",", ":"))
+        code = (
+            "import importlib.util,json,sys; "
+            "s=importlib.util.spec_from_file_location('candidate',sys.argv[1]); "
+            "m=importlib.util.module_from_spec(s); s.loader.exec_module(m); "
+            "f=getattr(m,sys.argv[2]); cases=json.loads(sys.stdin.read()); "
+            "print(json.dumps([f(x) == y for x,y in cases]))"
+        )
+        check = subprocess.run(
+            [os.environ.get("PYTHON", "python"), "-c", code, task.oracle["module"], task.oracle["function"]],
+            cwd=task_dir, input=payload, text=True, capture_output=True, timeout=2,
+        )
+        return check.returncode == 0 and json.loads(check.stdout) == [True] * len(task.oracle["cases"])
     raise ValueError(f"unsupported oracle kind: {kind}")
 
 
@@ -134,15 +149,21 @@ def run_evaluation(
     repetitions: int = 1,
     timeout: float = 10.0,
     output: Path | None = None,
+    dataset: str = "tasks-v1",
+    config_label: str = "default",
 ) -> list[EvalResult]:
-    tasks = [t for t in load_tasks() if t.split == split]
+    tasks = [t for t in load_tasks(dataset=dataset) if split == "all" or t.split == split]
     results = [run_task(task, command, timeout) for _ in range(repetitions) for task in tasks]
     if output:
         output.mkdir(parents=True, exist_ok=True)
         payload = {
-            "dataset": "tasks-v1",
+            "dataset": dataset,
+            "dataset_sha256": hashlib.sha256(Path(__file__).with_name("data").joinpath(f"{dataset}.json").read_bytes()).hexdigest(),
+            "config_label": config_label,
             "split": split,
             "repetitions": repetitions,
+            "repetition_ids": list(range(repetitions)),
+            "summary": {"successful": sum(r.success for r in results), "total": len(results)},
             "cost": {"status": "unknown", "reason": "candidate protocol reports no token billing"},
             "results": [r.__dict__ for r in results],
         }

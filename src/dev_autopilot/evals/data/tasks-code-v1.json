@@ -1,0 +1,845 @@
+{
+  "dataset": "code-v1",
+  "tasks": [
+    {
+      "id": "C01",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 1
+            },
+            {
+              "value": 1
+            }
+          ],
+          [
+            1,
+            1
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C02",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 2
+            },
+            {
+              "value": 2
+            }
+          ],
+          [
+            2,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C03",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 3
+            },
+            {
+              "value": 3
+            }
+          ],
+          [
+            3,
+            3
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C04",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 4
+            },
+            {
+              "value": 4
+            }
+          ],
+          [
+            4,
+            4
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C05",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 5
+            },
+            {
+              "value": 5
+            }
+          ],
+          [
+            5,
+            5
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C06",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 6
+            },
+            {
+              "value": 6
+            }
+          ],
+          [
+            6,
+            6
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C07",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 7
+            },
+            {
+              "value": 7
+            }
+          ],
+          [
+            7,
+            7
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C08",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 8
+            },
+            {
+              "value": 8
+            }
+          ],
+          [
+            8,
+            8
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C09",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 9
+            },
+            {
+              "value": 9
+            }
+          ],
+          [
+            9,
+            9
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C10",
+      "category": "numerical",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 10
+            },
+            {
+              "value": 10
+            }
+          ],
+          [
+            10,
+            10
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C11",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 11
+            },
+            {
+              "value": 11
+            }
+          ],
+          [
+            11,
+            11
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C12",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 12
+            },
+            {
+              "value": 12
+            }
+          ],
+          [
+            12,
+            12
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C13",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 13
+            },
+            {
+              "value": 13
+            }
+          ],
+          [
+            13,
+            13
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C14",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 14
+            },
+            {
+              "value": 14
+            }
+          ],
+          [
+            14,
+            14
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C15",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 15
+            },
+            {
+              "value": 15
+            }
+          ],
+          [
+            15,
+            15
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C16",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 16
+            },
+            {
+              "value": 16
+            }
+          ],
+          [
+            16,
+            16
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C17",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 17
+            },
+            {
+              "value": 17
+            }
+          ],
+          [
+            17,
+            17
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C18",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 18
+            },
+            {
+              "value": 18
+            }
+          ],
+          [
+            18,
+            18
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C19",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 19
+            },
+            {
+              "value": 19
+            }
+          ],
+          [
+            19,
+            19
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C20",
+      "category": "data",
+      "split": "train",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 20
+            },
+            {
+              "value": 20
+            }
+          ],
+          [
+            20,
+            20
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C21",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 21
+            },
+            {
+              "value": 21
+            }
+          ],
+          [
+            21,
+            21
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C22",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 22
+            },
+            {
+              "value": 22
+            }
+          ],
+          [
+            22,
+            22
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C23",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 23
+            },
+            {
+              "value": 23
+            }
+          ],
+          [
+            23,
+            23
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C24",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 24
+            },
+            {
+              "value": 24
+            }
+          ],
+          [
+            24,
+            24
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C25",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 25
+            },
+            {
+              "value": 25
+            }
+          ],
+          [
+            25,
+            25
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C26",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 26
+            },
+            {
+              "value": 26
+            }
+          ],
+          [
+            26,
+            26
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C27",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 27
+            },
+            {
+              "value": 27
+            }
+          ],
+          [
+            27,
+            27
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C28",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 28
+            },
+            {
+              "value": 28
+            }
+          ],
+          [
+            28,
+            28
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C29",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 29
+            },
+            {
+              "value": 29
+            }
+          ],
+          [
+            29,
+            29
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C30",
+      "category": "software",
+      "split": "holdout",
+      "prompt": "Repair solution.py: implement solve(inputs) so it returns the input unchanged. Preserve the function signature and return a JSON-compatible value.",
+      "files": {
+        "solution.py": "def solve(inputs):\n    return None\n"
+      },
+      "oracle": {
+        "kind": "python_function",
+        "module": "solution.py",
+        "function": "solve",
+        "cases": [
+          [
+            {
+              "value": 30
+            },
+            {
+              "value": 30
+            }
+          ],
+          [
+            30,
+            30
+          ]
+        ]
+      }
+    }
+  ]
+}
