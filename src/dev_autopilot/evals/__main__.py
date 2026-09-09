@@ -14,7 +14,10 @@ parser.add_argument("--timeout", type=float, default=10)
 parser.add_argument("--output", type=Path, default=Path("eval-results"))
 args = parser.parse_args()
 results = run_evaluation(
-    shlex.split(args.command), split=args.split, repetitions=args.repetitions,
-    timeout=args.timeout, output=args.output,
+    shlex.split(args.command),
+    split=args.split,
+    repetitions=args.repetitions,
+    timeout=args.timeout,
+    output=args.output,
 )
 print(f"{sum(r.success for r in results)}/{len(results)} successful; cost=unknown")
