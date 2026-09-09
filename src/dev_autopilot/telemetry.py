@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Protocol
 
 
@@ -27,6 +29,16 @@ class MemoryTraceSink:
 
     def emit(self, record: TraceRecord) -> None:
         self.records.append(record)
+
+
+class JsonlTraceSink:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def emit(self, record: TraceRecord) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(asdict(record), sort_keys=True) + "\n")
 
 
 def emit_trace(sink: TraceSink | None, record: TraceRecord) -> None:
