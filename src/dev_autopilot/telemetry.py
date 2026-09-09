@@ -6,7 +6,7 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,10 @@ class TraceRecord:
 
 class TraceSink(Protocol):
     def emit(self, record: TraceRecord) -> None: ...
+
+
+class OTelTracer(Protocol):
+    def start_span(self, name: str, *, attributes: dict[str, Any]) -> Any: ...
 
 
 class MemoryTraceSink:
@@ -48,7 +52,7 @@ class JsonlTraceSink:
 class OpenTelemetryTraceSink:
     """Optional OTel span sink; importing the optional dependency is deferred."""
 
-    def __init__(self, tracer: object | None = None) -> None:
+    def __init__(self, tracer: OTelTracer | None = None) -> None:
         if tracer is None:
             from opentelemetry import trace
 
