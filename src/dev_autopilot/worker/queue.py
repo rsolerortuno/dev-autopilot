@@ -6,9 +6,12 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from dev_autopilot.storage.backend import LocalStorageBackend
+from dev_autopilot.worker.coordination import SQLiteCoordinator
 from dev_autopilot.worker.job import (
     Blocker,
     Checkpoint,
@@ -35,15 +38,42 @@ class LostLeaseError(QueueError):
     pass
 
 
+def _coordinated(method):
+    def wrapped(self, *args, **kwargs):
+        with self.coordinator.lock():
+            return method(self, *args, **kwargs)
+
+    wrapped.__name__ = method.__name__
+    wrapped.__doc__ = method.__doc__
+    return wrapped
+
+
 class DriveQueue:
-    def __init__(self, backend: Any, *, root: str = "devautopilot") -> None:
+    def __init__(
+        self,
+        backend: Any,
+        *,
+        root: str = "devautopilot",
+        coordinator: SQLiteCoordinator | None = None,
+        single_writer: bool = False,
+    ) -> None:
         self.backend = backend
         self.root = root.rstrip("/")
+        if coordinator is None and isinstance(backend, LocalStorageBackend):
+            coordinator = SQLiteCoordinator(backend.root / ".queue-coordination.sqlite3")
+        if (
+            coordinator is None
+            and backend.__class__.__name__ == "DriveStorageBackend"
+            and not single_writer
+            and not getattr(backend, "_injected_service", False)
+        ):
+            raise QueueError("Drive queue requires a shared SQLite coordinator or explicit single_writer=True")
+        self.coordinator = coordinator or SQLiteCoordinator(Path(".dev-autopilot-queue-coordination.sqlite3"))
 
     def fork(self) -> DriveQueue:
         fork = getattr(self.backend, "fork", None)
         backend = fork() if callable(fork) else self.backend
-        return DriveQueue(backend, root=self.root)
+        return DriveQueue(backend, root=self.root, coordinator=self.coordinator, single_writer=True)
 
     @staticmethod
     def _resource_class(value: str) -> str:
@@ -64,6 +94,7 @@ class DriveQueue:
     def _worker_alias_key(self, resource_class: str) -> str:
         return f"workers/{self._resource_class(resource_class)}/READY.json"
 
+    @_coordinated
     def register_worker(
         self,
         resource_class: str,
@@ -86,6 +117,7 @@ class DriveQueue:
         self._put(self._worker_key(resource_class, owner_token), payload)
         self._put(self._worker_alias_key(resource_class), payload)
 
+    @_coordinated
     def unregister_worker(self, resource_class: str, owner_token: str) -> None:
         self.backend.delete(self._worker_key(resource_class, owner_token))
         alias = self._worker_alias_key(resource_class)
@@ -163,6 +195,7 @@ class DriveQueue:
         ]
         return any(self.backend.exists(key) for key in direct)
 
+    @_coordinated
     def submit(self, job: WorkerJob, *, now: datetime | None = None) -> None:
         if self._job_exists(job):
             raise QueueError(f"job already exists: {job.job_id}")
@@ -184,6 +217,7 @@ class DriveQueue:
             return WorkerJob.from_dict(raw["job"]), int(raw.get("attempt", 0))
         return WorkerJob.from_dict(raw), 0
 
+    @_coordinated
     def claim(
         self,
         resource_class: str,
@@ -285,6 +319,7 @@ class DriveQueue:
             raise LostLeaseError(f"lease for job {claim.job.job_id} expired")
         return lease
 
+    @_coordinated
     def heartbeat(self, claim: JobClaim, *, ttl_seconds: int = 900, now: datetime | None = None) -> None:
         timestamp = now or datetime.now(UTC)
         lease = self.assert_ownership(claim, now=timestamp)
@@ -299,6 +334,7 @@ class DriveQueue:
             },
         )
 
+    @_coordinated
     def checkpoint(self, claim: JobClaim, checkpoint: Checkpoint, *, now: datetime | None = None) -> None:
         self.assert_ownership(claim, now=now)
         if checkpoint.job_id != claim.job.job_id:
@@ -344,6 +380,7 @@ class DriveQueue:
             now=now,
         )
 
+    @_coordinated
     def _finish(
         self,
         claim: JobClaim,
@@ -373,6 +410,7 @@ class DriveQueue:
         for key in (running_key, self._lease_key(claim.job.job_id), self._heartbeat_key(claim.job.job_id)):
             self.backend.delete(key)
 
+    @_coordinated
     def reclaim_expired(self, *, now: datetime | None = None) -> tuple[str, ...]:
         timestamp = now or datetime.now(UTC)
         reclaimed: list[str] = []
@@ -412,6 +450,7 @@ class DriveQueue:
                 self.backend.delete(stale)
         return tuple(reclaimed)
 
+    @_coordinated
     def resume_cleared_blockers(self, *, now: datetime | None = None) -> tuple[str, ...]:
         timestamp = now or datetime.now(UTC)
         resumed: list[str] = []
