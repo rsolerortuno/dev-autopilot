@@ -59,7 +59,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-dev_autopilot = ["py.typed", "*.schema.json"]
+dev_autopilot = ["py.typed", "*.schema.json", "evals/data/*.json"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
