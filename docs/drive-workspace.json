@@ -7,8 +7,9 @@
     "evidencias": "1K_rubbpITyaOCZxLzkL-Rl6DSm1hb_Fe",
     "notebooks": "1jykDRZgRmH_zIM4ubV498XURJhstxtj4"
   },
-  "notebook_file_id": null,
-  "notebook_sha256": null,
+  "notebook_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
+  "notebook_sha256": "d837c460044b9030fe8c353ec692182741498d72dfa999a025d1bcd168f6fbd3",
+  "notebook_readback_verified": true,
   "transfer_policy": "stream/resumable or verified parts; SHA-256 readback",
   "worker_limit_until_atomic_coordination": 1
 }
