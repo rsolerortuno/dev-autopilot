@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from contextlib import suppress
+from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
