@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 
 import pytest
 
@@ -94,3 +95,51 @@ def test_reclaim_cleans_stale_running_record_without_resurrecting_terminal(tmp_p
     assert queue.reclaim_expired(now=T0 + timedelta(seconds=2)) == ()
     assert queue.job_status("stale")["status"] == "COMPLETED"
     assert not backend.exists(queue._running_key("stale"))
+
+
+def test_barrier_competing_mutations_are_serialized(tmp_path):
+    """A real thread interleaving cannot create two queue records."""
+    backend = LocalStorageBackend(tmp_path / "store")
+    coordinator_path = tmp_path / "coordination.sqlite3"
+    first = DriveQueue(backend, coordinator=SQLiteCoordinator(coordinator_path))
+    second = DriveQueue(backend, coordinator=SQLiteCoordinator(coordinator_path))
+    barrier = Barrier(2)
+    first.submit(_job("barrier"), now=T0)
+
+    def claim(queue, owner):
+        barrier.wait(timeout=5)
+        return queue.claim("cpu", owner, now=T0)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        claims = list(pool.map(lambda args: claim(*args), ((first, "one"), (second, "two"))))
+    assert sum(item is not None for item in claims) == 1
+
+
+def test_barrier_crash_after_publish_does_not_resurrect_job(tmp_path):
+    class CrashOnCleanup(LocalStorageBackend):
+        def delete(self, key):
+            if key.endswith("/running/crash-barrier.json") and self.exists("devautopilot/completed/crash-barrier.json"):
+                raise OSError("simulated crash after terminal publication")
+            return super().delete(key)
+
+    backend = CrashOnCleanup(tmp_path / "store")
+    queue = DriveQueue(backend, coordinator=SQLiteCoordinator(tmp_path / "coordination.sqlite3"))
+    queue.submit(_job("crash-barrier"), now=T0)
+    claim = queue.claim("cpu", "worker", now=T0)
+    assert claim is not None
+    barrier = Barrier(2)
+
+    def finish_and_reclaim():
+        barrier.wait(timeout=5)
+        with pytest.raises(OSError):
+            queue.complete(claim, now=T0 + timedelta(seconds=1))
+
+    def recover():
+        barrier.wait(timeout=5)
+        return queue.reclaim_expired(now=T0 + timedelta(seconds=2))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        finish, recovery = pool.map(lambda fn: fn(), (finish_and_reclaim, recover))
+    assert finish is None
+    assert recovery == ()
+    assert queue.job_status("crash-barrier")["status"] == "COMPLETED"
