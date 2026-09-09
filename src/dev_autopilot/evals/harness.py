@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 
+MAX_CAPTURE_BYTES = 1_048_576
+
+
 @dataclass(frozen=True)
 class Task:
     id: str
@@ -70,27 +73,33 @@ def run_task(task: Task, command: list[str], timeout: float = 10.0) -> EvalResul
         (task_dir / "TASK.md").write_text(task.prompt, encoding="utf-8")
         env = {"PATH": os.environ.get("PATH", ""), "DEV_AUTOPILOT_TASK_ID": task.id}
         try:
-            process = subprocess.Popen(
-                command, cwd=task_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
-            )
-            try:
-                stdout, stderr = process.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                if os.name == "posix":
-                    os.killpg(process.pid, getattr(signal, "SIGKILL", 9))  # type: ignore[attr-defined]
-                else:
-                    process.kill()
-                process.wait()
-                raise
-            completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
-            try:
-                oracle_ok = _oracle(task, task_dir)
-            except (OSError, ValueError, json.JSONDecodeError):
-                oracle_ok = False
-            success = completed.returncode == 0 and oracle_ok
-            error = None if success else (completed.stderr[-500:] or "oracle rejected candidate")
-            return_code: int | None = completed.returncode
-            timed_out = False
+            with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+                process = subprocess.Popen(
+                    command, cwd=task_dir, env=env, stdout=stdout_file, stderr=stderr_file, start_new_session=True
+                )
+                try:
+                    process.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    if os.name == "posix":
+                        os.killpg(process.pid, getattr(signal, "SIGKILL", 9))  # type: ignore[attr-defined]
+                    else:
+                        process.kill()
+                    process.wait()
+                    raise
+                def _tail(stream: Any) -> str:
+                    stream.seek(0, 2)
+                    end = stream.tell()
+                    stream.seek(max(0, end - MAX_CAPTURE_BYTES))
+                    return stream.read(MAX_CAPTURE_BYTES).decode("utf-8", errors="replace")
+                stderr = _tail(stderr_file)
+                try:
+                    oracle_ok = _oracle(task, task_dir)
+                except Exception:
+                    oracle_ok = False
+                success = process.returncode == 0 and oracle_ok
+                error = None if success else (stderr[-500:] or "oracle rejected candidate")
+                return_code: int | None = process.returncode
+                timed_out = False
         except subprocess.TimeoutExpired:
             success, error, return_code, timed_out = False, "candidate timed out", None, True
     return EvalResult(
