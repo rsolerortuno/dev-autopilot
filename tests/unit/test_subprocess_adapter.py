@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
 import time
@@ -10,7 +12,7 @@ import pytest
 from dev_autopilot.adapters.subprocess import ExecutableAgentAdapter, LocalCommandAdapter
 from dev_autopilot.models import AgentCommand, ResultStatus
 
-GIT = "/usr/bin/git"
+GIT = shutil.which("git") or "git"
 
 
 def _git_repository(path: Path) -> Path:
@@ -34,7 +36,7 @@ def test_agent_git_metadata_write_is_rejected(tmp_path: Path) -> None:
     code = (
         "import json,os,subprocess,pathlib;"
         "p=pathlib.Path('changed.txt');p.write_text('x');"
-        "subprocess.run(['/usr/bin/git','add','changed.txt'],check=True);"
+        f"subprocess.run([{GIT!r},'add','changed.txt'],check=True);"
         "pathlib.Path(os.environ['DEV_AUTOPILOT_OUTPUT_FILE']).write_text("
         "json.dumps({'summary':'done'}))"
     )
@@ -73,7 +75,7 @@ def test_agent_detects_ref_mutation_and_allows_ordinary_file_edit(tmp_path: Path
     assert allowed.status is ResultStatus.SUCCESS
     ref_code = (
         "import os,subprocess,time; "
-        "subprocess.run(['/usr/bin/git','update-ref','refs/heads/unsafe','HEAD'],check=True); "
+        f"subprocess.run([{GIT!r},'update-ref','refs/heads/unsafe','HEAD'],check=True); "
         "time.sleep(.01)"
     )
     adapter = ExecutableAgentAdapter("codex", AgentCommand(command=(sys.executable, "-c", ref_code), timeout_seconds=5))
@@ -81,6 +83,7 @@ def test_agent_detects_ref_mutation_and_allows_ordinary_file_edit(tmp_path: Path
     assert result.status is ResultStatus.SECURITY
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Linux/WSL2 process-group runtime test")
 def test_timeout_prefers_security_and_terminates_child_process(tmp_path: Path) -> None:
     repository = _git_repository(tmp_path / "repo")
     code = (

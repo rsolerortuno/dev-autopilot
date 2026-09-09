@@ -72,6 +72,8 @@ def _build_orchestrator(
             claude_reviewer=reviewer,
             progress=progress,
         )
+    if os.name != "posix":
+        raise ConfigurationError("real agent execution requires Linux/WSL2; native Windows supports offline operations only")
     if not job.gates.allow_network:
         raise ConfigurationError("real agent execution requires explicit gates.allow_network: true")
     missing = [

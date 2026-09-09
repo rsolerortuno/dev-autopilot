@@ -150,6 +150,8 @@ class SQLiteStore:
     def _check_schema_compatibility(path: Path, *, require_complete: bool = False) -> None:
         """Reject databases written by a newer release before any mutation."""
         if not path.exists() or path.stat().st_size == 0:
+            if require_complete:
+                raise PersistenceError("database is empty or missing")
             return
         try:
             connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
@@ -164,10 +166,7 @@ class SQLiteStore:
                 row = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
                 if require_complete:
                     tables = {
-                        name
-                        for (name,) in connection.execute(
-                            "SELECT name FROM sqlite_master WHERE type='table'"
-                        ).fetchall()
+                        name for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
                     }
                     required = {
                         "schema_migrations",
@@ -187,9 +186,7 @@ class SQLiteStore:
             raise PersistenceError(f"cannot inspect database schema: {path}") from exc
         version = None if row is None else row[0]
         if version is not None and (not isinstance(version, int) or version > SCHEMA_VERSION):
-            raise PersistenceError(
-                f"unsupported database schema version {version}; this release supports up to {SCHEMA_VERSION}"
-            )
+            raise PersistenceError(f"unsupported database schema version {version}; this release supports up to {SCHEMA_VERSION}")
 
     @property
     def schema_version(self) -> int:
@@ -258,8 +255,9 @@ class SQLiteStore:
             finally:
                 target_connection.close()
                 source_connection.close()
-            os.replace(temporary_name, target)
-            temporary_name = None
+            # Hard-link installation is atomic and refuses a target that appeared
+            # after the initial existence check. The temp file is on the same FS.
+            os.link(temporary_name, target)
         finally:
             if temporary_name is not None:
                 with suppress(FileNotFoundError):

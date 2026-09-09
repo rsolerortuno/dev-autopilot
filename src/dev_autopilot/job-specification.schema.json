@@ -3,6 +3,14 @@
     "AgentCommand": {
       "additionalProperties": false,
       "properties": {
+        "allowed_environment": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Environment",
+          "type": "array"
+        },
         "command": {
           "items": {
             "type": "string"
@@ -166,6 +174,11 @@
         "require_clean_baseline": {
           "default": false,
           "title": "Require Clean Baseline",
+          "type": "boolean"
+        },
+        "retrieve_context": {
+          "default": false,
+          "title": "Retrieve Context",
           "type": "boolean"
         }
       },
@@ -359,7 +372,8 @@
         "allow_network": false,
         "max_changed_files": 200,
         "max_context_bytes": 2000000,
-        "require_clean_baseline": false
+        "require_clean_baseline": false,
+        "retrieve_context": false
       }
     },
     "name": {

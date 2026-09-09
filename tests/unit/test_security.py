@@ -12,14 +12,31 @@ from dev_autopilot.security import redact
 
 @pytest.mark.parametrize(
     ("payload", "secret"),
-    [(value, "s3cr3t") for value in (
-        "s3cr3t", "prefix s3cr3t suffix", ["s3cr3t"], {"x": "s3cr3t"},
-        {"x": ["prefix s3cr3t"]}, ("s3cr3t",), {"nested": {"v": "s3cr3t"}},
-        "s3cr3t,s3cr3t", "S3CR3T", "x-s3cr3t-y", {"a": 1, "b": None},
-        [1, True, None], {"token": "s3cr3t"}, {"token": ["s3cr3t"]},
-        {"a": ("s3cr3t",)}, "", {"secret": ""}, ["safe", {"v": "s3cr3t"}],
-        {1: "s3cr3t"}, {"long": "xxs3cr3tyy"},
-    )],
+    [
+        (value, "s3cr3t")
+        for value in (
+            "s3cr3t",
+            "prefix s3cr3t suffix",
+            ["s3cr3t"],
+            {"x": "s3cr3t"},
+            {"x": ["prefix s3cr3t"]},
+            ("s3cr3t",),
+            {"nested": {"v": "s3cr3t"}},
+            "s3cr3t,s3cr3t",
+            "S3CR3T",
+            "x-s3cr3t-y",
+            {"a": 1, "b": None},
+            [1, True, None],
+            {"token": "s3cr3t"},
+            {"token": ["s3cr3t"]},
+            {"a": ("s3cr3t",)},
+            "",
+            {"secret": ""},
+            ["safe", {"v": "s3cr3t"}],
+            {1: "s3cr3t"},
+            {"long": "xxs3cr3tyy"},
+        )
+    ],
 )
 def test_redact_adversarial_shapes(payload, secret):
     result = redact(payload, (secret,))
@@ -39,9 +56,7 @@ def test_adapter_uses_minimal_environment_and_redacts_nested_result(tmp_path, mo
     adapter = ExecutableAgentAdapter(
         "agent", AgentCommand(command=(sys.executable, "-c", code), timeout_seconds=5), ("SECRET_TOKEN",)
     )
-    result = adapter.execute(
-        task="work", repository=tmp_path, context={"credentials": "context-secret"}, output_contract="json"
-    )
+    result = adapter.execute(task="work", repository=tmp_path, context={"credentials": "context-secret"}, output_contract="json")
     assert result.status is ResultStatus.SUCCESS
     assert "top-secret-value" not in result.stdout
     assert "top-secret-value" not in json.dumps(result.output)
