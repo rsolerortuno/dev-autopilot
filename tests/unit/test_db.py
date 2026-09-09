@@ -62,6 +62,16 @@ def test_restore_protects_existing_destination(tmp_path, job) -> None:
     assert destination.read_bytes() == b"keep"
 
 
+def test_restore_rejects_unrelated_sqlite_without_creating_target(tmp_path) -> None:
+    source = tmp_path / "unrelated.sqlite3"
+    with sqlite3.connect(source) as connection:
+        connection.execute("CREATE TABLE unrelated(value TEXT)")
+    destination = tmp_path / "destination.sqlite3"
+    with pytest.raises(PersistenceError, match="not a Dev Autopilot"):
+        SQLiteStore.restore(source, destination)
+    assert not destination.exists()
+
+
 def test_events_are_append_only(tmp_path, job) -> None:
     store = SQLiteStore(tmp_path / "state.sqlite3")
     run = store.create_run(job)

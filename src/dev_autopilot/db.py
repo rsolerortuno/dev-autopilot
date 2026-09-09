@@ -147,19 +147,40 @@ class SQLiteStore:
         self._initialize()
 
     @staticmethod
-    def _check_schema_compatibility(path: Path) -> None:
+    def _check_schema_compatibility(path: Path, *, require_complete: bool = False) -> None:
         """Reject databases written by a newer release before any mutation."""
         if not path.exists() or path.stat().st_size == 0:
             return
         try:
-            connection = sqlite3.connect(path, uri=False)
+            connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
             try:
                 table = connection.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
                 ).fetchone()
                 if table is None:
+                    if require_complete:
+                        raise PersistenceError("database is not a Dev Autopilot database")
                     return
                 row = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
+                if require_complete:
+                    tables = {
+                        name
+                        for (name,) in connection.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table'"
+                        ).fetchall()
+                    }
+                    required = {
+                        "schema_migrations",
+                        "runs",
+                        "events",
+                        "phase_results",
+                        "retries",
+                        "run_locks",
+                        "artifacts",
+                        "audit_cache",
+                    }
+                    if not required <= tables:
+                        raise PersistenceError("database is not a complete Dev Autopilot database")
             finally:
                 connection.close()
         except sqlite3.DatabaseError as exc:
@@ -207,11 +228,11 @@ class SQLiteStore:
         return target
 
     @classmethod
-    def restore(cls, source: str | Path, destination: str | Path, *, overwrite: bool = False) -> SQLiteStore:
+    def restore(cls, source: str | Path, destination: str | Path) -> SQLiteStore:
         """Restore a consistent backup into a new database path.
 
-        Existing destinations are protected unless ``overwrite`` is explicit;
-        replacement itself is atomic so a failed restore leaves the destination intact.
+        Existing destinations are rejected to avoid replacing a live WAL database;
+        installation into a new path is atomic.
         """
         source_path = Path(source)
         target = Path(destination)
@@ -219,9 +240,9 @@ class SQLiteStore:
             raise ValueError("restore source and destination must differ")
         if not source_path.is_file():
             raise FileNotFoundError(source_path)
-        if target.exists() and not overwrite:
+        if target.exists():
             raise FileExistsError(target)
-        cls._check_schema_compatibility(source_path)
+        cls._check_schema_compatibility(source_path, require_complete=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary_name: str | None = None
         try:

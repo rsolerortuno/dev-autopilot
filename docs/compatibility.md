@@ -17,7 +17,8 @@ refuses to open a database whose highest recorded level is newer than it
 supports; this check runs before initialization so an unsupported future
 database is not modified. `SQLiteStore.backup()` creates a consistent snapshot,
 and `SQLiteStore.restore()` verifies integrity before atomically installing a
-backup. Existing restore destinations require `overwrite=True`.
+backup. Restore destinations must be new paths, which avoids replacing a live
+WAL database and leaving stale sidecars behind.
 
 Packaged JSON schemas are generated from the Pydantic models with:
 
