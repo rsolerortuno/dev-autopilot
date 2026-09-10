@@ -1,7 +1,12 @@
 import json
+import runpy
+from pathlib import Path
 
 import pytest
-from scripts.soak_offline import _normal_wait_observed, run
+
+_script = runpy.run_path(str(Path(__file__).resolve().parents[1] / "scripts" / "soak_offline.py"))
+_normal_wait_observed = _script["_normal_wait_observed"]
+run = _script["run"]
 
 
 def test_short_soak_exercises_all_injected_invariants(tmp_path):
