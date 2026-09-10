@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import subprocess
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -32,7 +34,12 @@ def _snapshot(root: Path) -> str:
 
 
 def _terms(text: str) -> set[str]:
-    return set(re.findall(r"[a-z][a-z0-9_]{1,}", text.lower()))
+    return set(_tokens(text))
+
+
+def _tokens(text: str) -> list[str]:
+    separated = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
+    return re.findall(r"[a-z][a-z0-9]{1,}", separated.lower())
 
 
 @dataclass(frozen=True)
@@ -104,19 +111,44 @@ class RetrievalIndex:
         if _snapshot(root) != self.commit:
             raise ValueError("stale retrieval index; rebuild for the current commit")
         terms = _terms(query)
+        counts = [Counter(_tokens(p.content)) for p in self.passages]
+        path_terms = [_terms(p.path) for p in self.passages]
+        document_frequency = Counter(
+            term for tokens, path in zip(counts, path_terms, strict=True) for term in tokens.keys() | path
+        )
+        average_length = sum(sum(tokens.values()) for tokens in counts) / max(1, len(counts)) or 1.0
+
+        def relevance_score(position: int) -> float:
+            tokens = counts[position]
+            normalization = 1.2 * (0.25 + 0.75 * sum(tokens.values()) / average_length)
+            value = 0.0
+            for term in terms:
+                frequency = tokens[term]
+                inverse_frequency = math.log(
+                    1 + (len(counts) - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5)
+                )
+                value += inverse_frequency * frequency * 2.2 / (frequency + normalization)
+                if term in path_terms[position]:
+                    value += 0.75 * inverse_frequency
+            return value
+
         ranked = sorted(
-            ((len(terms & _terms(p.content + " " + p.path)), p) for p in self.passages),
+            ((relevance_score(position), p) for position, p in enumerate(self.passages)),
             key=lambda item: (-item[0], item[1].path, item[1].start_line),
         )
         matches: list[dict[str, object]] = []
+        seen_paths: set[str] = set()
         for score, passage in ranked:
             if not score or len(matches) >= top_k:
                 break
+            if passage.path in seen_paths:
+                continue
             candidate: dict[str, object] = {**asdict(passage), "score": score}
             proposed = {"trust": "untrusted_repository_data", "commit": self.commit, "matches": [*matches, candidate]}
             if len(json.dumps(proposed, ensure_ascii=False).encode()) > max_context_bytes:
                 continue
             matches.append(candidate)
+            seen_paths.add(passage.path)
         result: dict[str, object] = {"trust": "untrusted_repository_data", "commit": self.commit, "matches": matches}
         if len(json.dumps(result, ensure_ascii=False).encode()) > max_context_bytes:
             raise ValueError("context budget too small for retrieval envelope")

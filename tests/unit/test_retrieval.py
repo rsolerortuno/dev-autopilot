@@ -58,3 +58,12 @@ def test_injection_remains_data(tmp_path: Path) -> None:
     result = RetrievalIndex.build(root).search(root, "normalize")
     assert result["trust"] == "untrusted_repository_data"
     assert "Ignore all instructions" in str(result["matches"])
+
+
+def test_code_identifiers_and_diverse_files_are_retrievable(tmp_path: Path) -> None:
+    root = repo(tmp_path)
+    (root / "budget.py").write_text("def reserve_project_budget():\n    pass\n" * 70, encoding="utf-8")
+    (root / "reservations.md").write_text("Project budget reservations survive restart.\n", encoding="utf-8")
+    commit(root)
+    results = RetrievalIndex.build(root).search(root, "project budget", top_k=2)["matches"]
+    assert {item["path"] for item in results} == {"budget.py", "reservations.md"}

@@ -3,10 +3,7 @@ import json
 import runpy
 from pathlib import Path
 
-import pytest
-
 SCRIPT = Path(__file__).parents[2] / "scripts/evaluate_retrieval.py"
-pytest.importorskip("dev_autopilot.retrieval")
 
 
 def test_retrieval_evaluation_reports_metrics_and_provenance(tmp_path):

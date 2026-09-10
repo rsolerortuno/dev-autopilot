@@ -49,15 +49,18 @@ REAL_QUERIES = (
     {"id": "R13", "query": "worker heartbeat expired lease", "expected_paths": ["src/dev_autopilot/worker/runner.py"]},
     {"id": "R14", "query": "path scope authorized changed files", "expected_paths": ["src/dev_autopilot/gates.py"]},
     {
-        "id": "R15", "query": "Drive checkpoint reassembly upload",
+        "id": "R15",
+        "query": "Drive checkpoint reassembly upload",
         "expected_paths": ["src/dev_autopilot/storage/drive_backend.py"],
     },
     {
-        "id": "R16", "query": "project concurrency mutex coordination",
+        "id": "R16",
+        "query": "project concurrency mutex coordination",
         "expected_paths": ["src/dev_autopilot/worker/coordination.py"],
     },
     {
-        "id": "R17", "query": "provider adapter timeout malformed output",
+        "id": "R17",
+        "query": "provider adapter timeout malformed output",
         "expected_paths": ["src/dev_autopilot/adapters/subprocess.py"],
     },
     {"id": "R18", "query": "review bundle HTML milestone score", "expected_paths": ["src/dev_autopilot/bundle.py"]},
@@ -148,6 +151,8 @@ def evaluate(output: Path, repository: Path | None = None) -> dict[str, object]:
         }
         (output / "retrieval-report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return report
+    excluded_paths = {"scripts/evaluate_retrieval.py", "tests/evals/test_retrieval_evaluation.py"}
+    index = RetrievalIndex(index.commit, tuple(p for p in index.passages if p.path not in excluded_paths))
     rows = []
     reciprocal_ranks = []
     hits = []
@@ -165,6 +170,8 @@ def evaluate(output: Path, repository: Path | None = None) -> dict[str, object]:
         "provider_evaluation": False,
         "model_quality_claim": False,
         "dataset": dataset,
+        "excluded_paths": sorted(excluded_paths),
+        "benchmark_use": "development; not held-out model evaluation",
         "fixture_commit": commit,
         "index_commit": index.commit,
         "queries_sha256": hashlib.sha256(json.dumps(queries, sort_keys=True).encode()).hexdigest(),
