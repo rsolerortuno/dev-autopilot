@@ -33,6 +33,38 @@ QUERIES = (
     {"id": "Q20", "query": "untrusted retrieved repository data", "expected_paths": ["docs/trust.md"]},
 )
 
+REAL_QUERIES = (
+    {"id": "R01", "query": "architecture orchestration state machine", "expected_paths": ["docs/architecture.md"]},
+    {"id": "R02", "query": "security threat model scope permissions", "expected_paths": ["docs/threat-model.md"]},
+    {"id": "R03", "query": "queue lease fencing takeover", "expected_paths": ["src/dev_autopilot/worker/queue.py"]},
+    {"id": "R04", "query": "project quota pause retry", "expected_paths": ["src/dev_autopilot/project.py"]},
+    {"id": "R05", "query": "storage checksum chunk manifest", "expected_paths": ["src/dev_autopilot/storage/manifest.py"]},
+    {"id": "R06", "query": "retry backoff transient failure", "expected_paths": ["src/dev_autopilot/retries.py"]},
+    {"id": "R07", "query": "SQLite schema migration event", "expected_paths": ["src/dev_autopilot/db.py"]},
+    {"id": "R08", "query": "baseline validation reproducibility", "expected_paths": ["src/dev_autopilot/baseline.py"]},
+    {"id": "R09", "query": "audit findings severity reviewer", "expected_paths": ["src/dev_autopilot/review.py"]},
+    {"id": "R10", "query": "Docker healthcheck nonroot deployment", "expected_paths": ["docs/deployment.md"]},
+    {"id": "R11", "query": "orchestrator pause resume workflow", "expected_paths": ["src/dev_autopilot/orchestrator.py"]},
+    {"id": "R12", "query": "artifact SHA256 provenance evidence", "expected_paths": ["src/dev_autopilot/evidence.py"]},
+    {"id": "R13", "query": "worker heartbeat expired lease", "expected_paths": ["src/dev_autopilot/worker/runner.py"]},
+    {"id": "R14", "query": "path scope authorized changed files", "expected_paths": ["src/dev_autopilot/gates.py"]},
+    {
+        "id": "R15", "query": "Drive checkpoint reassembly upload",
+        "expected_paths": ["src/dev_autopilot/storage/drive_backend.py"],
+    },
+    {
+        "id": "R16", "query": "project concurrency mutex coordination",
+        "expected_paths": ["src/dev_autopilot/worker/coordination.py"],
+    },
+    {
+        "id": "R17", "query": "provider adapter timeout malformed output",
+        "expected_paths": ["src/dev_autopilot/adapters/subprocess.py"],
+    },
+    {"id": "R18", "query": "review bundle HTML milestone score", "expected_paths": ["src/dev_autopilot/bundle.py"]},
+    {"id": "R19", "query": "backup restore SQLite integrity", "expected_paths": ["docs/compatibility.md"]},
+    {"id": "R20", "query": "untrusted retrieved repository data", "expected_paths": ["docs/threat-model.md"]},
+)
+
 FIXTURE = {
     "docs/architecture.md": "Architecture: orchestration uses a persistent state machine with auditable workflow transitions.",
     "docs/security.md": "Security threat model covers scope permissions, secret exclusion, and fail-closed authorization.",
@@ -87,19 +119,39 @@ def _make_fixture(root: Path) -> str:
     return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
 
 
-def evaluate(output: Path) -> dict[str, object]:
+def evaluate(output: Path, repository: Path | None = None) -> dict[str, object]:
     output = output.resolve()
     if output.exists() and (not output.is_dir() or any(output.iterdir())):
         raise ValueError(f"refusing to overwrite non-empty output directory: {output}")
     output.mkdir(parents=True)
-    repository = output / "fixture-repository"
-    repository.mkdir()
-    commit = _make_fixture(repository)
-    index = RetrievalIndex.build(repository)
+    dataset = "fixture" if repository is None else "repository"
+    queries = QUERIES if repository is None else REAL_QUERIES
+    if repository is None:
+        repository = output / "fixture-repository"
+        repository.mkdir()
+        commit = _make_fixture(repository)
+    else:
+        repository = repository.resolve(strict=True)
+        commit = None
+    try:
+        index = RetrievalIndex.build(repository)
+    except (OSError, ValueError) as exc:
+        report = {
+            "mode": "offline deterministic retrieval evaluation",
+            "dataset": dataset,
+            "provider_evaluation": False,
+            "model_quality_claim": False,
+            "status": "blocked",
+            "error": str(exc),
+            "query_count": len(queries),
+            "failed_queries": [{"id": item["id"], "reason": str(exc)} for item in queries],
+        }
+        (output / "retrieval-report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return report
     rows = []
     reciprocal_ranks = []
     hits = []
-    for item in QUERIES:
+    for item in queries:
         query = item["query"]
         result = index.search(repository, query, top_k=5)
         paths = [str(match["path"]) for match in result["matches"]]
@@ -112,12 +164,14 @@ def evaluate(output: Path) -> dict[str, object]:
         "mode": "offline deterministic retrieval evaluation",
         "provider_evaluation": False,
         "model_quality_claim": False,
+        "dataset": dataset,
         "fixture_commit": commit,
         "index_commit": index.commit,
-        "queries_sha256": hashlib.sha256(json.dumps(QUERIES, sort_keys=True).encode()).hexdigest(),
+        "queries_sha256": hashlib.sha256(json.dumps(queries, sort_keys=True).encode()).hexdigest(),
         "query_count": len(rows),
         "metrics": {"recall_at_5": sum(hits) / len(hits), "mrr": sum(reciprocal_ranks) / len(reciprocal_ranks)},
         "queries": rows,
+        "failed_queries": [row for row in rows if row["rank"] is None],
     }
     (output / "retrieval-report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report
@@ -126,8 +180,9 @@ def evaluate(output: Path) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--repository", type=Path, help="evaluate an existing clean Git repository")
     args = parser.parse_args()
-    report = evaluate(args.output)
+    report = evaluate(args.output, args.repository)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 
