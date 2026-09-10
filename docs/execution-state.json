@@ -2,7 +2,7 @@
   "target": "1.0.0",
   "base_sha": "d76bc5fd8dd14798c8bf509416557cdaed71d36b",
   "integration_branch": "implementation/v1",
-  "release_publication": "requires user final review",
+  "release_publication": "0.9.0 preview explicitly authorized 2026-09-11; 1.0.0 still requires final owner acceptance",
   "tasks": {
     "T01": {
       "status": "implemented_pending_final_validation",
@@ -83,8 +83,8 @@
     },
     "T19": {
       "status": "partial",
-      "completed": "Notebook and wheel uploaded with SHA-256 readback",
-      "remaining": "Authenticated Colab runtime interrupt/resume smoke; offline eight-hour soak running separately"
+      "completed": "Verified Drive artifacts and Colab mount/install/queue startup (saved notebook outputs)",
+      "remaining": "Actual job completion and interruption/recovery on Colab; full eight-hour soak"
     },
     "T20": {
       "status": "implemented_pending_external_validation",
@@ -104,16 +104,16 @@
   "external_checks": {
     "linux_runtime": "GitHub Actions Ubuntu available; local Windows has no Docker/WSL",
     "live_providers": "model choice delegated; spending cap and usable credentials pending",
-    "colab": "not authenticated or allocated",
-    "eight_hour_soak": "running locally; PID 26992; outputs/soak-8h-20260910/soak-checkpoint.json; target 28800 observed seconds; no completion claimed",
+    "colab": "Saved notebook confirms mount/install/queue startup; eight idle cycles then KeyboardInterrupt; no completed job",
+    "eight_hour_soak": "Incomplete; 1210+ cycles, about 7254 observed seconds at release preparation; no invariant failures; local process continues",
     "human_portfolio_defense": "pending owner",
     "github_write": "git push successful; draft PR https://github.com/rsolerortuno/dev-autopilot/pull/13",
-    "linux_ci": "passed Python 3.11/3.12/3.13, dependency audit, lint, format, mypy, wheel build and fresh install at bfeb515",
+    "linux_ci": "Passed Python 3.11-3.13 at d35396d; version 0.9.0 candidate will be checked independently",
     "docker_runtime": "passed live Docker enforcement and timeout cleanup at bfeb515"
   },
-  "updated_at": "2026-09-10T20:52:29.868808+00:00",
+  "updated_at": "2026-09-10T23:10:22.891355+00:00",
   "integration_head": "73ae605",
-  "development_version": "0.7.0.dev0",
+  "development_version": "0.9.0",
   "local_validation": {
     "command": "pytest --cov=dev_autopilot --cov-fail-under=80 -q",
     "passed": 414,
@@ -157,5 +157,11 @@
     "codeql": "https://github.com/rsolerortuno/dev-autopilot/actions/runs/34528643452",
     "docker": "https://github.com/rsolerortuno/dev-autopilot/actions/runs/34528643438",
     "later_commits": "require their own CI results"
+  },
+  "preview_release": {
+    "version": "0.9.0",
+    "status": "preparing",
+    "pr": 13,
+    "scope": "public preview, not 1.0.0 acceptance"
   }
 }

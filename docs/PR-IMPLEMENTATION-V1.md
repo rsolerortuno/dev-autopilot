@@ -1,25 +1,9 @@
-Dev Autopilot previously lacked enforceable shared provider budgets, robust local
-queue recovery, scoped MCP inspection and reproducible evaluation evidence. This
-branch adds durable reservation/replay controls, Windows storage race fixes,
-optional Docker isolation and approval grants, immutable Git retrieval, and
-versioned code-repair evaluation fixtures.
+Prepare Dev Autopilot 0.9.0 as a public CLI preview for acceptance testing before 1.0.0. The owner explicitly authorized this preview's publication.
 
-The current development version is `0.7.0.dev0`; this is a draft toward 1.0.0.
-It includes an offline restart demo, package checks, deployment/runbook material
-and a checksum-pinned Colab notebook synchronized to the owner's Drive workspace.
+This adds durable provider budgets and queue recovery, optional Docker isolation, scoped approval grants and MCP inspection, immutable Git retrieval and offline evaluation fixtures. The README retains its structure with diagrams explaining the workflow, quota/restart and worker leases, plus wheel installation steps.
 
-Validation before the PR: 414 tests passed on Windows/Python 3.12 with 83.25%
-coverage; one Linux process-group test was skipped. Ruff, formatting and strict
-mypy passed, and a fresh wheel installation produced a verified demo bundle.
-Twenty development retrieval queries improved from Recall@5=0.40 to 0.90; these
-are not held-out model-quality results. CI results on this branch are separate
-from that local evidence.
+Package and Colab notebook versions are aligned to 0.9.0. Drive transfers are SHA-256 verified. Tag publication runs mandatory CI, validates metadata, builds an SBOM and checksums, and publishes only the authorized v0.9.0 preview.
 
-Linux CI (Python 3.11/3.12/3.13), CodeQL and a live Docker enforcement/timeout
-smoke passed at bfeb515. The branch also includes an offline eight-hour durability
-runner with incremental checkpoints and suspension-gap exclusion. A local run is
-in progress; it is not yet evidence of eight hours completed.
+Validation: preceding Linux CI passed 418 tests (one opt-in Docker skip), lint, format, mypy, dependency audit and fresh installation on Python 3.11–3.13. Docker enforcement/timeout cleanup and CodeQL passed separately. The 0.9.0 local wheel installs and completes the offline pause/restart demo. Final candidate CI must pass.
 
-Remaining acceptance gates include real-provider matched
-evaluations and billing, Colab interruption/recovery, an eight-hour soak and the
-owner's portfolio presentation/final review. No 1.0.0 tag or release is published.
+The saved Colab notebook proves mount/install/queue startup, then eight idle cycles and manual interruption, with no completed job. The eight-hour offline soak is incomplete. Real-provider comparison/billing, Colab job recovery, the full soak and owner acceptance remain 1.0.0 gates.

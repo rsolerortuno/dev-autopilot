@@ -3,8 +3,8 @@
 **Development preview: 0.9.0, progressing toward 1.0.0.**
 See [execution state](docs/execution-state.json), the [1.0.0 plan](docs/PLAN-1.0.0.md)
 and the [capability/evidence matrix](docs/PORTFOLIO-EVIDENCE.md). This is a CLI
-preview with no GUI. Live provider comparisons, budget evidence, Linux/Colab
-gates and the owner's final release review remain pending.
+preview with no GUI. Linux CI and Docker checks pass. Live provider comparisons,
+cost evidence, Colab job recovery and final 1.0.0 acceptance remain pending.
 
 Dev Autopilot is a persistent, auditable development orchestrator for scientific
 software. It runs bounded implementation, deterministic validation, adversarial
@@ -67,10 +67,12 @@ sequenceDiagram
     participant O as Orchestrator
     participant B as BudgetStore
     participant S as SQLite
+    participant P as Provider
     O->>B: reserve(call_id, estimate)
     B->>S: persist pending reservation
     O->>B: claim execution
-    B-->>O: provider quota
+    O->>P: execute authorized call
+    P-->>O: provider quota
     O->>S: persist PAUSED_QUOTA and retry time
     Note over O: process may stop here
     O->>S: reopen state after restart
@@ -132,7 +134,7 @@ For the 0.9.0 preview, install a wheel from the [GitHub Releases](https://github
 checking its SHA-256, or install from source for development:
 
 ```bash
-python -m pip install dev-autopilot==0.9.0
+python -m pip install ./dev_autopilot-0.9.0-py3-none-any.whl
 python -m pip install -e '.[dev]'
 ```
 
@@ -396,8 +398,8 @@ exact evidence included with the checkpoint.
 
 These limitations are explicit so a review bundle never claims a stronger
 operational guarantee than the evidence supports.
-- The offline soak is an incomplete operational exercise (approximately two
-  hours reported by the owner), not proof of an eight-hour run or Colab job.
+- The offline soak checkpoint records approximately two observed hours so far,
+  not a completed eight-hour run or Colab job.
 - Provider benchmark comparisons and budget-backed cost evidence are pending.
 - No 1.0.0 release or quality claim is made by this 0.9.0 preview; a live
   provider benchmark still requires a planned dataset, budget, and analysis.
