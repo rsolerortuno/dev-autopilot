@@ -191,11 +191,43 @@ class TestCommands(ContractModel):
 class AgentCommand(ContractModel):
     command: tuple[str, ...] = Field(min_length=1)
     timeout_seconds: Annotated[int, Field(gt=0)] = 3600
+    allowed_environment: tuple[str, ...] = ()
+    runtime: Literal["local", "docker"] = "local"
+    sandbox_image: str | None = None
+    sandbox_network: str = "none"
+    model_name: str | None = None
+    estimated_micro_usd: Annotated[int, Field(gt=0)] | None = None
+
+    @model_validator(mode="after")
+    def require_container_image(self) -> AgentCommand:
+        if self.runtime == "docker" and not self.sandbox_image:
+            raise ValueError("docker runtime requires a digest-pinned sandbox_image")
+        return self
 
     @field_validator("command", mode="before")
     @classmethod
     def freeze_command(cls, value: object) -> object:
         return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("allowed_environment", mode="before")
+    @classmethod
+    def freeze_environment(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("allowed_environment")
+    @classmethod
+    def validate_environment(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not name or not name.replace("_", "").isalnum() or name[0].isdigit() for name in value):
+            raise ValueError("environment allowlist must contain variable names, not values")
+        return tuple(dict.fromkeys(value))
+
+
+class BudgetPolicy(ContractModel):
+    project_id: NonEmptyString | None = None
+    max_calls: Annotated[int, Field(gt=0)] = 100
+    project_max_calls: Annotated[int, Field(gt=0)] = 1000
+    max_micro_usd: Annotated[int, Field(ge=0)] | None = None
+    project_max_micro_usd: Annotated[int, Field(ge=0)] | None = None
 
 
 class AgentSettings(ContractModel):
@@ -229,6 +261,7 @@ class GatePolicy(ContractModel):
     require_clean_baseline: bool = False
     max_changed_files: Annotated[int, Field(gt=0)] = 200
     max_context_bytes: Annotated[int, Field(gt=0)] = 2_000_000
+    retrieve_context: bool = False
 
 
 class ReviewPolicy(ContractModel):
@@ -263,6 +296,7 @@ class JobSpecification(ContractModel):
     allowed_paths: tuple[PathRule, ...] = Field(min_length=1)
     test_commands: TestCommands
     agents: AgentSettings = AgentSettings()
+    budget: BudgetPolicy = BudgetPolicy()
     retry_policy: RetryPolicySpec = RetryPolicySpec()
     gates: GatePolicy = GatePolicy()
     review: ReviewPolicy = ReviewPolicy()

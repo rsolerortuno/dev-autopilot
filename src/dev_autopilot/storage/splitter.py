@@ -3,14 +3,36 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from dev_autopilot.storage.backend import StorageBackend, validate_storage_key
 from dev_autopilot.storage.manifest import ChunkEntry, ChunkManifest, FormatStrategy, resolve_part_size
 
 _READ_BLOCK = 4 * 1024 * 1024
+
+
+@contextmanager
+def _temporary_part(prefix: str) -> Iterator[tuple[BinaryIO, Path]]:
+    """Yield a closed-reopenable temporary file and remove it on exit.
+
+    ``NamedTemporaryFile`` keeps its handle open on Windows, where a second
+    opener (the storage backend) cannot read it.  Closing the descriptor before
+    publishing keeps the same bounded-memory behaviour on every platform.
+    """
+    descriptor, raw_path = tempfile.mkstemp(prefix=prefix)
+    path = Path(raw_path)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            yield handle, path
+    finally:
+        with suppress(FileNotFoundError):
+            path.unlink()
 
 
 @dataclass(frozen=True)
@@ -80,7 +102,7 @@ def split_file(
             expected = min(part_size, total_size - offset) if total_size else 0
             part_hash = hashlib.sha256()
             actual = 0
-            with tempfile.NamedTemporaryFile(prefix="dev-autopilot-part-", delete=True) as temp:
+            with _temporary_part("dev-autopilot-part-") as (temp, temp_path):
                 while actual < expected:
                     block = handle.read(min(_READ_BLOCK, expected - actual))
                     if not block:
@@ -90,10 +112,11 @@ def split_file(
                     whole.update(block)
                     actual += len(block)
                 temp.flush()
+                temp.close()
                 key = _part_key(key_prefix, index)
                 digest = part_hash.hexdigest()
                 entry = ChunkEntry(index=index, name=key, offset=offset, size=actual, sha256=digest)
-                if _publish_part(backend, key=key, temp_path=Path(temp.name), size=actual, digest=digest):
+                if _publish_part(backend, key=key, temp_path=temp_path, size=actual, digest=digest):
                     written += 1
                 else:
                     reused += 1
@@ -146,7 +169,7 @@ def split_object(
         expected = min(part_size, total_size - offset) if total_size else 0
         actual = 0
         digest = hashlib.sha256()
-        with tempfile.NamedTemporaryFile(prefix="dev-autopilot-remote-part-", delete=True) as temp:
+        with _temporary_part("dev-autopilot-remote-part-") as (temp, temp_path):
             while actual < expected:
                 block = source_backend.get_range(
                     source_key,
@@ -160,12 +183,13 @@ def split_object(
                 whole.update(block)
                 actual += len(block)
             temp.flush()
+            temp.close()
             part_key = _part_key(key_prefix, index)
             part_digest = digest.hexdigest()
             if _publish_part(
                 destination_backend,
                 key=part_key,
-                temp_path=Path(temp.name),
+                temp_path=temp_path,
                 size=actual,
                 digest=part_digest,
             ):

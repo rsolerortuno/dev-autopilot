@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dev-autopilot"
-version = "0.6.0"
+version = "0.9.0"
 description = "Persistent, auditable multi-agent development orchestrator for scientific software"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,6 +30,8 @@ Repository = "https://github.com/rsolerortuno/dev-autopilot"
 Issues = "https://github.com/rsolerortuno/dev-autopilot/issues"
 
 [project.optional-dependencies]
+mcp = ["mcp>=2.2,<3"]
+telemetry = ["opentelemetry-sdk>=1.30,<2"]
 dev = [
     "build>=1.2",
     "setuptools>=77",
@@ -57,7 +59,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-dev_autopilot = ["py.typed", "*.schema.json"]
+dev_autopilot = ["py.typed", "*.schema.json", "evals/data/*.json"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"

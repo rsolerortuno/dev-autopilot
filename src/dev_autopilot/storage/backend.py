@@ -5,10 +5,19 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import BinaryIO, Protocol, runtime_checkable
 
 _READ_BLOCK = 4 * 1024 * 1024
+_REPLACE_ATTEMPTS = 4
+
+
+def _is_windows_runtime() -> bool:
+    return os.name == "nt"
 
 
 @runtime_checkable
@@ -69,12 +78,46 @@ class LocalStorageBackend:
             raise ValueError(f"storage key escapes root: {key!r}")
         return path
 
+    @staticmethod
+    def _replace_with_retry(source: Path, destination: Path) -> None:
+        """Atomically replace a path, tolerating brief Windows sharing locks."""
+        for attempt in range(_REPLACE_ATTEMPTS):
+            try:
+                os.replace(source, destination)
+                return
+            except PermissionError:
+                if not _is_windows_runtime() or attempt == _REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
+
+    @staticmethod
+    @contextmanager
+    def _open_read(path: Path) -> Iterator[BinaryIO]:
+        """Open a local object, tolerating brief Windows sharing locks."""
+        for attempt in range(_REPLACE_ATTEMPTS):
+            try:
+                handle = path.open("rb")
+            except PermissionError:
+                if not _is_windows_runtime() or attempt == _REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
+            else:
+                try:
+                    yield handle
+                finally:
+                    handle.close()
+                return
+
     def put_bytes(self, key: str, data: bytes) -> str:
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(path.name + ".partial")
-        tmp.write_bytes(data)
-        os.replace(tmp, path)
+        tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.partial")
+        try:
+            tmp.write_bytes(data)
+            self._replace_with_retry(tmp, path)
+        finally:
+            with suppress(OSError):
+                tmp.unlink()
         return hashlib.sha256(data).hexdigest()
 
     def put_file(self, key: str, source: Path | str) -> str:
@@ -83,15 +126,19 @@ class LocalStorageBackend:
             raise FileNotFoundError(source_path)
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(path.name + ".partial")
+        tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.partial")
         digest = hashlib.sha256()
-        with source_path.open("rb") as src, tmp.open("wb") as dst:
-            for block in iter(lambda: src.read(_READ_BLOCK), b""):
-                dst.write(block)
-                digest.update(block)
-            dst.flush()
-            os.fsync(dst.fileno())
-        os.replace(tmp, path)
+        try:
+            with source_path.open("rb") as src, tmp.open("wb") as dst:
+                for block in iter(lambda: src.read(_READ_BLOCK), b""):
+                    dst.write(block)
+                    digest.update(block)
+                dst.flush()
+                os.fsync(dst.fileno())
+            self._replace_with_retry(tmp, path)
+        finally:
+            with suppress(OSError):
+                tmp.unlink()
         return digest.hexdigest()
 
     def object_identity(self, key: str) -> str:
@@ -116,12 +163,13 @@ class LocalStorageBackend:
     def get_range(self, key: str, *, offset: int, length: int) -> bytes:
         if offset < 0 or length < 0:
             raise ValueError("offset and length must be non-negative")
-        with self._path(key).open("rb") as handle:
+        with self._open_read(self._path(key)) as handle:
             handle.seek(offset)
             return handle.read(length)
 
     def get_bytes(self, key: str) -> bytes:
-        return self._path(key).read_bytes()
+        with self._open_read(self._path(key)) as handle:
+            return handle.read()
 
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
@@ -131,7 +179,7 @@ class LocalStorageBackend:
 
     def sha256(self, key: str) -> str:
         digest = hashlib.sha256()
-        with self._path(key).open("rb") as handle:
+        with self._open_read(self._path(key)) as handle:
             for block in iter(lambda: handle.read(_READ_BLOCK), b""):
                 digest.update(block)
         return digest.hexdigest()

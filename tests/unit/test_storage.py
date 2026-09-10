@@ -165,3 +165,81 @@ def test_unimplemented_format_strategy_fails_closed(tmp_path):
             part_size_bytes=10,
             strategy=FormatStrategy.PARQUET_ROW_GROUP,
         )
+
+
+@pytest.mark.parametrize("method", ["put_bytes", "put_file"])
+def test_local_replace_retries_transient_windows_permission(tmp_path, monkeypatch, method):
+    backend = LocalStorageBackend(tmp_path / "store")
+    source = _write(tmp_path / "source.bin", b"payload")
+    original = os.replace
+    attempts = 0
+    monkeypatch.setattr("dev_autopilot.storage.backend._is_windows_runtime", lambda: True)
+
+    def flaky_replace(src, dst):
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 2:
+            raise PermissionError(5, "sharing violation")
+        return original(src, dst)
+
+    monkeypatch.setattr("dev_autopilot.storage.backend.os.replace", flaky_replace)
+    digest = backend.put_bytes("lease.json", b"payload") if method == "put_bytes" else backend.put_file("lease.json", source)
+    assert digest == hashlib.sha256(b"payload").hexdigest()
+    assert backend.get_bytes("lease.json") == b"payload"
+    assert attempts == 3
+
+
+def test_local_replace_propagates_persistent_windows_permission(tmp_path, monkeypatch):
+    backend = LocalStorageBackend(tmp_path / "store")
+    monkeypatch.setattr("dev_autopilot.storage.backend._is_windows_runtime", lambda: True)
+
+    def denied(src, dst):
+        raise PermissionError(5, "access denied")
+
+    monkeypatch.setattr("dev_autopilot.storage.backend.os.replace", denied)
+    with pytest.raises(PermissionError):
+        backend.put_bytes("lease.json", b"payload")
+    assert not list((tmp_path / "store").glob("*.partial"))
+
+
+@pytest.mark.parametrize("reader", ["get_bytes", "get_range", "sha256"])
+def test_local_read_retries_transient_windows_permission(tmp_path, monkeypatch, reader):
+    backend = LocalStorageBackend(tmp_path / "store")
+    backend.put_bytes("read.bin", b"payload")
+    original_open = type(tmp_path / "store" / "read.bin").open
+    attempts = 0
+    monkeypatch.setattr("dev_autopilot.storage.backend._is_windows_runtime", lambda: True)
+
+    def flaky_open(path, *args, **kwargs):
+        nonlocal attempts
+        if path.name == "read.bin":
+            attempts += 1
+            if attempts <= 2:
+                raise PermissionError(13, "sharing violation")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("pathlib.Path.open", flaky_open)
+    value = (
+        backend.get_bytes("read.bin")
+        if reader == "get_bytes"
+        else backend.get_range("read.bin", offset=0, length=7)
+        if reader == "get_range"
+        else backend.sha256("read.bin")
+    )
+    assert value == (b"payload" if reader != "sha256" else hashlib.sha256(b"payload").hexdigest())
+    assert attempts == 3
+
+
+def test_local_read_propagates_persistent_windows_permission(tmp_path, monkeypatch):
+    backend = LocalStorageBackend(tmp_path / "store")
+    backend.put_bytes("read.bin", b"payload")
+    monkeypatch.setattr("dev_autopilot.storage.backend._is_windows_runtime", lambda: True)
+
+    def denied_open(path, *args, **kwargs):
+        if path.name == "read.bin":
+            raise PermissionError(13, "access denied")
+        return path.open(*args, **kwargs)
+
+    monkeypatch.setattr("pathlib.Path.open", denied_open)
+    with pytest.raises(PermissionError):
+        backend.get_bytes("read.bin")

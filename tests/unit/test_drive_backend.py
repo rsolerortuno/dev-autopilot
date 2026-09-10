@@ -227,7 +227,7 @@ def test_drive_put_bytes_and_file_update_are_resumable_contracts(tmp_path):
 
 def test_drive_backend_queue_submit_claim_checkpoint_complete():
     backend, _ = _backend()
-    queue = DriveQueue(backend, root="queue-test")
+    queue = DriveQueue(backend, root="queue-test", single_writer=True)
     job = WorkerJob(
         job_id="J-M05",
         project_id="P-M05",

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from dev_autopilot.db import SCHEMA_VERSION, SQLiteStore
-from dev_autopilot.errors import ErrorClass, RunLockError
+from dev_autopilot.errors import ErrorClass, PersistenceError, RunLockError
 from dev_autopilot.models import RetryState
 from dev_autopilot.states import WorkflowState
 
@@ -27,6 +27,49 @@ def test_run_and_events_survive_restart(tmp_path, job) -> None:
     events = second.list_events(run.run_id)
     assert [event["sequence"] for event in events] == [0, 1]
     assert SCHEMA_VERSION == 1
+    assert second.schema_version == SCHEMA_VERSION
+
+
+def test_future_schema_is_rejected_without_mutation(tmp_path) -> None:
+    path = tmp_path / "future.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)")
+        connection.execute("INSERT INTO schema_migrations VALUES (99, 'future')")
+        connection.commit()
+    before = path.read_bytes()
+    with pytest.raises(PersistenceError, match="unsupported database schema version 99"):
+        SQLiteStore(path)
+    assert path.read_bytes() == before
+
+
+def test_backup_and_restore_round_trip_atomically(tmp_path, job) -> None:
+    source = SQLiteStore(tmp_path / "source.sqlite3")
+    run = source.create_run(job)
+    backup = source.backup(tmp_path / "backup.sqlite3")
+    restored = SQLiteStore.restore(backup, tmp_path / "restored.sqlite3")
+    assert restored.schema_version == SCHEMA_VERSION
+    assert restored.get_run(run.run_id) == source.get_run(run.run_id)
+
+
+def test_restore_protects_existing_destination(tmp_path, job) -> None:
+    source = SQLiteStore(tmp_path / "source.sqlite3")
+    source.create_run(job)
+    backup = source.backup(tmp_path / "backup.sqlite3")
+    destination = tmp_path / "destination.sqlite3"
+    destination.write_bytes(b"keep")
+    with pytest.raises(FileExistsError):
+        SQLiteStore.restore(backup, destination)
+    assert destination.read_bytes() == b"keep"
+
+
+def test_restore_rejects_unrelated_sqlite_without_creating_target(tmp_path) -> None:
+    source = tmp_path / "unrelated.sqlite3"
+    with sqlite3.connect(source) as connection:
+        connection.execute("CREATE TABLE unrelated(value TEXT)")
+    destination = tmp_path / "destination.sqlite3"
+    with pytest.raises(PersistenceError, match="not a Dev Autopilot"):
+        SQLiteStore.restore(source, destination)
+    assert not destination.exists()
 
 
 def test_events_are_append_only(tmp_path, job) -> None:

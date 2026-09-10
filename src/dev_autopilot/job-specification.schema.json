@@ -3,6 +3,14 @@
     "AgentCommand": {
       "additionalProperties": false,
       "properties": {
+        "allowed_environment": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Environment",
+          "type": "array"
+        },
         "command": {
           "items": {
             "type": "string"
@@ -10,6 +18,57 @@
           "minItems": 1,
           "title": "Command",
           "type": "array"
+        },
+        "estimated_micro_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Micro Usd"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "runtime": {
+          "default": "local",
+          "enum": [
+            "local",
+            "docker"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        },
+        "sandbox_image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sandbox Image"
+        },
+        "sandbox_network": {
+          "default": "none",
+          "title": "Sandbox Network",
+          "type": "string"
         },
         "timeout_seconds": {
           "default": 3600,
@@ -73,6 +132,64 @@
         }
       },
       "title": "AgentSettings",
+      "type": "object"
+    },
+    "BudgetPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "max_calls": {
+          "default": 100,
+          "exclusiveMinimum": 0,
+          "title": "Max Calls",
+          "type": "integer"
+        },
+        "max_micro_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Micro Usd"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "project_max_calls": {
+          "default": 1000,
+          "exclusiveMinimum": 0,
+          "title": "Project Max Calls",
+          "type": "integer"
+        },
+        "project_max_micro_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Max Micro Usd"
+        }
+      },
+      "title": "BudgetPolicy",
       "type": "object"
     },
     "EvidencePolicy": {
@@ -166,6 +283,11 @@
         "require_clean_baseline": {
           "default": false,
           "title": "Require Clean Baseline",
+          "type": "boolean"
+        },
+        "retrieve_context": {
+          "default": false,
+          "title": "Retrieve Context",
           "type": "boolean"
         }
       },
@@ -342,6 +464,16 @@
       "title": "Allowed Paths",
       "type": "array"
     },
+    "budget": {
+      "$ref": "#/$defs/BudgetPolicy",
+      "default": {
+        "max_calls": 100,
+        "max_micro_usd": null,
+        "project_id": null,
+        "project_max_calls": 1000,
+        "project_max_micro_usd": null
+      }
+    },
     "evidence": {
       "$ref": "#/$defs/EvidencePolicy",
       "default": {
@@ -359,7 +491,8 @@
         "allow_network": false,
         "max_changed_files": 200,
         "max_context_bytes": 2000000,
-        "require_clean_baseline": false
+        "require_clean_baseline": false,
+        "retrieve_context": false
       }
     },
     "name": {

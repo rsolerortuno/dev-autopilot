@@ -178,7 +178,7 @@ def test_worker_environment_resolves_relative_pythonpath(tmp_path, monkeypatch):
     env = _worker_environment(_job(), tmp_path / "job", tmp_path / "checkpoint.json", tmp_path / "progress.json")
     entries = env["PYTHONPATH"].split(os.pathsep)
     assert entries[0] == str((tmp_path / "src").resolve())
-    assert entries[1] == "/absolute"
+    assert entries[1] == str(Path("/absolute").resolve())
 
 
 def test_reclaimed_job_receives_previous_checkpoint(tmp_path):

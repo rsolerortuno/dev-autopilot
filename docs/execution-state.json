@@ -1,0 +1,167 @@
+{
+  "target": "1.0.0",
+  "base_sha": "d76bc5fd8dd14798c8bf509416557cdaed71d36b",
+  "integration_branch": "implementation/v1",
+  "release_publication": "0.9.0 preview explicitly authorized 2026-09-11; 1.0.0 still requires final owner acceptance",
+  "tasks": {
+    "T01": {
+      "status": "implemented_pending_final_validation",
+      "branch": "agent/luna-platform",
+      "review": "reviewed with corrections; final integration review pending"
+    },
+    "T02": {
+      "status": "implemented_pending_final_validation",
+      "branch": "agent/luna-release",
+      "review": "reviewed with corrections; final integration review pending"
+    },
+    "T03": {
+      "status": "implemented_pending_final_validation",
+      "branch": "agent/luna-contracts",
+      "review": "reviewed with corrections; final integration review pending"
+    },
+    "T04": {
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
+    },
+    "T05": {
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
+    },
+    "T06": {
+      "status": "implemented_pending_external_validation",
+      "branch": "agent/luna-platform",
+      "remaining": "Local opt-in grants implemented and reviewed; authenticated multi-user enforcement is out of scope"
+    },
+    "T07": {
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
+    },
+    "T08": {
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
+    },
+    "T09": {
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
+    },
+    "T10": {
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
+    },
+    "T11": {
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
+    },
+    "T12": {
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
+    },
+    "T13": {
+      "status": "pending_live_evaluation",
+      "remaining": "Single agent versus reviewer pipeline and audit ablation; matched model and budgets, 3 repetitions"
+    },
+    "T14": {
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending"
+    },
+    "T15": {
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending",
+      "completed": "Git batch reads with pre-read budgets, immutable provenance, lexical ranking; development Recall@5=0.90"
+    },
+    "T16": {
+      "status": "implemented_pending_final_validation",
+      "review": "reviewed with corrections; final integration review pending",
+      "remaining": "Context utility ablation with real agents and independent evaluation set"
+    },
+    "T17": {
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
+    },
+    "T18": {
+      "status": "pending"
+    },
+    "T19": {
+      "status": "partial",
+      "completed": "Verified Drive artifacts and Colab mount/install/queue startup (saved notebook outputs)",
+      "remaining": "Actual job completion and interruption/recovery on Colab; full eight-hour soak"
+    },
+    "T20": {
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
+    },
+    "T21": {
+      "status": "partial",
+      "completed": "Evidence matrix and demo script documented",
+      "remaining": "Live examples, measured comparisons, owner video and explanation"
+    },
+    "T22": {
+      "status": "blocked_by_acceptance_gates",
+      "completed": "Development wheel clean installation, demo and Git bundle",
+      "remaining": "Final SHA CI, remaining plan criteria, owner review; no release publication"
+    }
+  },
+  "external_checks": {
+    "linux_runtime": "GitHub Actions Ubuntu available; local Windows has no Docker/WSL",
+    "live_providers": "model choice delegated; spending cap and usable credentials pending",
+    "colab": "Saved notebook confirms mount/install/queue startup; eight idle cycles then KeyboardInterrupt; no completed job",
+    "eight_hour_soak": "Incomplete; 1210+ cycles, about 7254 observed seconds at release preparation; no invariant failures; local process continues",
+    "human_portfolio_defense": "pending owner",
+    "github_write": "git push successful; draft PR https://github.com/rsolerortuno/dev-autopilot/pull/13",
+    "linux_ci": "Passed Python 3.11-3.13 at d35396d; version 0.9.0 candidate will be checked independently",
+    "docker_runtime": "passed live Docker enforcement and timeout cleanup at bfeb515"
+  },
+  "updated_at": "2026-09-10T23:10:22.891355+00:00",
+  "integration_head": "73ae605",
+  "development_version": "0.9.0",
+  "local_validation": {
+    "command": "pytest --cov=dev_autopilot --cov-fail-under=80 -q",
+    "passed": 414,
+    "skipped": 1,
+    "coverage_percent": 83.25,
+    "code_commit": "90600ff",
+    "scope": "Windows Python 3.12; Linux process-group test skipped",
+    "ruff": "passed",
+    "mypy": "53 source files passed",
+    "wheel_demo": "passed with exact wheel; synthetic providers",
+    "test_suite_commit": "482e1e0",
+    "retrieval": {
+      "queries": 20,
+      "recall_at_5": 0.9,
+      "mrr": 0.5,
+      "baseline_recall_at_5": 0.4,
+      "repository_commit": "ae9e13bafc4dc062f2dd39b066dd5e9e04d9f522",
+      "scope": "development queries; not an unseen holdout or model quality measurement"
+    }
+  },
+  "notebook": {
+    "remote_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
+    "sync_status": "verified SHA-256 readback",
+    "wheel_file_id": "1iIdP_b9ChPRSnllES8wruCA2e9NzriGf",
+    "build_source_commit": "e1ecfc101d4b940a18a17b0dd2c87c8b557a06c1"
+  },
+  "coordinator_preference": {
+    "model": "gpt-6-astra",
+    "reasoning_effort": "low",
+    "controlled_by": "host model selector"
+  },
+  "subagents": {
+    "model": "gpt-5.6-luna",
+    "maximum_concurrent": 3,
+    "isolation": "separate worktrees"
+  },
+  "github": {
+    "draft_pr": "https://github.com/rsolerortuno/dev-autopilot/pull/13",
+    "validated_commit": "bfeb5152f8df375c1a33b5e1d98e88404605d6d1",
+    "ci": "https://github.com/rsolerortuno/dev-autopilot/actions/runs/34528643475",
+    "codeql": "https://github.com/rsolerortuno/dev-autopilot/actions/runs/34528643452",
+    "docker": "https://github.com/rsolerortuno/dev-autopilot/actions/runs/34528643438",
+    "later_commits": "require their own CI results"
+  },
+  "preview_release": {
+    "version": "0.9.0",
+    "status": "preparing",
+    "pr": 13,
+    "scope": "public preview, not 1.0.0 acceptance"
+  }
+}

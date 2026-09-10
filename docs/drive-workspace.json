@@ -1,0 +1,22 @@
+{
+  "parent_folder_id": "1o5gfkBSUw32YOoqc555yLUE3YCQYV8F_",
+  "project_folder_id": "1PAkI23Ajzu5QcmcI8quw_Xfd6-4UhROO",
+  "folders": {
+    "artefactos": "1ZokW2Ik6MTme5VQS0L055_5W8zgF13Ri",
+    "checkpoints": "1x_l861WLAD3DuVUMiDOvKedvgdDPxMVX",
+    "evidencias": "1K_rubbpITyaOCZxLzkL-Rl6DSm1hb_Fe",
+    "notebooks": "1jykDRZgRmH_zIM4ubV498XURJhstxtj4"
+  },
+  "notebook_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
+  "notebook_sha256": "d98f6f70e68b20d9a74eed76151957dd21a0ffed8f9f5b15f299fa9d63e32f5c",
+  "notebook_readback_verified": true,
+  "transfer_policy": "stream/resumable or verified parts; SHA-256 readback",
+  "worker_limit_until_atomic_coordination": 1,
+  "wheel_file_id": "10-R35uD3-qOgZDAd29ZNsYOzDNJR2vWS",
+  "wheel_sha256": "e75de458ee6bbf86a8d5c1db6d27c424708aadb11f7822d4f2028c38b540eb2f",
+  "wheel_readback_verified": true,
+  "checkpoint_bundle_file_id": "1HUWc9AhR7_10Hf16905glW_9XwqQ56yV",
+  "artifact_manifest_file_id": "1gxT9fXogD-XyPRfwYp_P43dxm6vFqnN8",
+  "execution_state_file_id": "1LCywTw3nlhglTeXmL6FtFo_oDyPBmVu1",
+  "sdist_file_id": "1dqKFMz22vk9gkzDr3ZWGEFdCKo8TSJ4J"
+}

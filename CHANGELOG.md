@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0 - 2026-09-11
+
+Public preview for user acceptance testing before 1.0.0.
+
+- Durable provider budgets, restart recovery, scoped approvals and MCP inspection.
+- Optional Docker sandbox with live Linux enforcement and timeout cleanup checks.
+- Immutable Git retrieval and reproducible offline evaluation fixtures.
+- Verified wheel, Drive checkpoint storage and checksum-pinned Colab worker.
+- Linux CI across Python 3.11–3.13; offline restart demo and durability soak runner.
+
+The Colab worker has been started by the owner. This is not yet evidence of a
+completed real-provider workload or interruption/recovery test. The eight-hour
+soak and matched-provider quality/billing evaluations remain 1.0.0 gates.
+
+See `docs/RELEASE-0.9.0.md` for installation and acceptance testing.
+
 ## 0.6.0 - 2026-08-10
 
 ### Real-project execution hardening

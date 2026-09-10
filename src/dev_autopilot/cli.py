@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sqlite3
 import sys
@@ -13,8 +14,12 @@ from pathlib import Path
 from uuid import UUID
 
 from dev_autopilot import cli_storage
+from dev_autopilot.adapters.base import AgentAdapter
 from dev_autopilot.adapters.fake import FakeCommandAdapter, ScriptedAgentAdapter
+from dev_autopilot.adapters.sandbox import DockerAgentAdapter
 from dev_autopilot.adapters.subprocess import ExecutableAgentAdapter, LocalCommandAdapter
+from dev_autopilot.authorization import ApprovalGrantStore
+from dev_autopilot.budget import BudgetConfig, BudgetStore
 from dev_autopilot.config import load_job_configuration
 from dev_autopilot.db import SCHEMA_VERSION, SQLiteStore
 from dev_autopilot.engine import TransitionEngine
@@ -22,6 +27,7 @@ from dev_autopilot.errors import AutopilotError, ConfigurationError, TransitionE
 from dev_autopilot.events import EventType
 from dev_autopilot.legacy import migrate_legacy_checkpoint
 from dev_autopilot.models import (
+    AgentCommand,
     AuditReport,
     ExecutionResult,
     JobSpecification,
@@ -31,13 +37,42 @@ from dev_autopilot.models import (
 )
 from dev_autopilot.orchestrator import Orchestrator
 from dev_autopilot.project import ContinuousProjectRunner, ProjectStore, load_project_charter
+from dev_autopilot.providers import BudgetedAgentAdapter
 from dev_autopilot.states import PAUSED_STATES, TERMINAL_STATES, WorkflowState
+from dev_autopilot.telemetry import JsonlTraceSink
 
 DEFAULT_DB = Path(".dev-autopilot/autopilot.sqlite3")
 
 
 def _success(summary: str, output: dict[str, object] | None = None) -> ExecutionResult:
     return ExecutionResult(status=ResultStatus.SUCCESS, summary=summary, output=output or {})
+
+
+def _configured_agent(name: str, settings: AgentCommand | None, job: JobSpecification, store: SQLiteStore) -> AgentAdapter:
+    if settings is None:
+        raise ConfigurationError(f"missing agent settings: {name}")
+    adapter: AgentAdapter
+    if settings.runtime == "docker":
+        adapter = DockerAgentAdapter(name, settings, image=settings.sandbox_image or "", network_policy=settings.sandbox_network)
+    else:
+        adapter = ExecutableAgentAdapter(name, settings)
+    policy = job.budget
+    return BudgetedAgentAdapter(
+        adapter,
+        provider=name,
+        model=settings.model_name,
+        budget=BudgetStore(store.path.with_name("budgets.sqlite3")),
+        config=BudgetConfig(
+            project_id=policy.project_id or f"job-{job.configuration_id}",
+            milestone_id=job.evidence.milestone_id,
+            max_calls=policy.max_calls,
+            max_micro_usd=policy.max_micro_usd,
+            project_max_calls=policy.project_max_calls,
+            project_max_micro_usd=policy.project_max_micro_usd,
+        ),
+        estimated_micro_usd=settings.estimated_micro_usd or 0,
+        sink=JsonlTraceSink(store.path.with_name("provider-traces.jsonl")),
+    )
 
 
 def _build_orchestrator(
@@ -71,6 +106,8 @@ def _build_orchestrator(
             claude_reviewer=reviewer,
             progress=progress,
         )
+    if os.name != "posix":
+        raise ConfigurationError("real agent execution requires Linux/WSL2; native Windows supports offline operations only")
     if not job.gates.allow_network:
         raise ConfigurationError("real agent execution requires explicit gates.allow_network: true")
     missing = [
@@ -87,19 +124,13 @@ def _build_orchestrator(
     return Orchestrator(
         store,
         command_adapter=LocalCommandAdapter(),
-        codex=ExecutableAgentAdapter("codex", job.agents.codex),  # type: ignore[arg-type]
-        agy=ExecutableAgentAdapter("agy", job.agents.agy),  # type: ignore[arg-type]
-        claude_reviewer=ExecutableAgentAdapter(
-            "claude-reviewer",
-            job.agents.claude_reviewer,  # type: ignore[arg-type]
-        ),
+        codex=_configured_agent("codex", job.agents.codex, job, store),
+        agy=_configured_agent("agy", job.agents.agy, job, store),
+        claude_reviewer=_configured_agent("claude-reviewer", job.agents.claude_reviewer, job, store),
         claude_supervisor=(
             None
             if job.agents.claude_supervisor is None
-            else ExecutableAgentAdapter(
-                "claude-supervisor",
-                job.agents.claude_supervisor,
-            )
+            else _configured_agent("claude-supervisor", job.agents.claude_supervisor, job, store)
         ),
         progress=progress,
     )
@@ -248,6 +279,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     approve = sub.add_parser("approve")
     approve.add_argument("run_id", type=UUID)
+    approve.add_argument("--grant-id", help="one-use approval grant bound to this run and current diff")
+    approve.add_argument("--actor", default="human", help="human actor named by the approval grant")
+
+    approval = sub.add_parser("approval", help="issue one-use human approval grants")
+    approval_sub = approval.add_subparsers(dest="approval_command", required=True)
+    approval_issue = approval_sub.add_parser("issue")
+    approval_issue.add_argument("run_id", type=UUID)
+    approval_issue.add_argument("--actor", required=True)
+    approval_issue.add_argument("--ttl-seconds", type=int, default=900)
 
     archive = sub.add_parser("archive")
     archive.add_argument("run_id", type=UUID)
@@ -291,6 +331,11 @@ def main(argv: list[str] | None = None) -> int:
                 ("python", sys.version_info >= (3, 11), sys.version.split()[0]),
                 ("sqlite", sqlite3.sqlite_version_info >= (3, 35, 0), sqlite3.sqlite_version),
                 ("git", shutil.which("git") is not None, shutil.which("git") or "missing"),
+                (
+                    "worker-platform",
+                    os.name == "posix",
+                    "POSIX (Linux/WSL2 supported)" if os.name == "posix" else "unsupported native Windows; use Linux or WSL2",
+                ),
             ]
             if args.job:
                 job = load_job_configuration(args.job)
@@ -345,6 +390,21 @@ def main(argv: list[str] | None = None) -> int:
             return storage_exit
 
         store = SQLiteStore(args.db)
+
+        if args.command == "approval" and args.approval_command == "issue":
+            run = store.get_run(args.run_id)
+            if run.state is not WorkflowState.READY_FOR_HUMAN_REVIEW:
+                raise TransitionError("approval grants require READY_FOR_HUMAN_REVIEW runs")
+            diff_sha256 = LocalCommandAdapter().diff_sha256(repository=Path(run.job.repository))
+            grant = ApprovalGrantStore(store.path.with_name("authorization.sqlite3")).issue(
+                run_id=str(args.run_id),
+                action="approve",
+                diff_sha256=diff_sha256,
+                actor=args.actor,
+                ttl_seconds=args.ttl_seconds,
+            )
+            print(grant)
+            return 0
 
         if args.command == "project":
             project_store = ProjectStore(store)
@@ -434,8 +494,17 @@ def main(argv: list[str] | None = None) -> int:
             run = store.get_run(args.run_id)
             if run.state is not WorkflowState.READY_FOR_HUMAN_REVIEW:
                 raise TransitionError("only READY_FOR_HUMAN_REVIEW runs can be approved")
+            if args.grant_id:
+                diff_sha256 = LocalCommandAdapter().diff_sha256(repository=Path(run.job.repository))
+                ApprovalGrantStore(store.path.with_name("authorization.sqlite3")).consume(
+                    args.grant_id,
+                    run_id=str(args.run_id),
+                    action="approve",
+                    diff_sha256=diff_sha256,
+                    actor=args.actor,
+                )
             store.mark_approved(args.run_id)
-            store.append_event(args.run_id, EventType.HUMAN_APPROVED, actor="human", reason="approved")
+            store.append_event(args.run_id, EventType.HUMAN_APPROVED, actor=args.actor, reason="approved")
             _print_run(store.get_run(args.run_id))
             return 0
 

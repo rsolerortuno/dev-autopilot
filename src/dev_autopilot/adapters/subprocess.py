@@ -14,6 +14,7 @@ from contextlib import suppress
 from pathlib import Path
 
 from dev_autopilot.models import AgentCommand, ExecutionResult, ResultStatus, has_shell_syntax
+from dev_autopilot.security import BASE_ENVIRONMENT, redact, secret_values, sensitive_values
 
 
 def _text(value: bytes | str | None) -> str:
@@ -129,9 +130,10 @@ class ExecutableAgentAdapter:
 
     _SECURITY_POLL_SECONDS = 0.1
 
-    def __init__(self, name: str, settings: AgentCommand) -> None:
+    def __init__(self, name: str, settings: AgentCommand, allowed_environment: tuple[str, ...] = ()) -> None:
         self.name = name
         self.settings = settings
+        self.allowed_environment = tuple(dict.fromkeys((*settings.allowed_environment, *allowed_environment)))
 
     @staticmethod
     def _git_run(repository: Path, *args: str) -> str:
@@ -170,12 +172,22 @@ class ExecutableAgentAdapter:
     @staticmethod
     def _terminate_group(process: subprocess.Popen[str]) -> None:
         """Boundedly terminate the complete session, descendants and pipes."""
+        if os.name != "posix":
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                with suppress(subprocess.TimeoutExpired):
+                    process.wait(timeout=2)
+            return
         try:
-            os.killpg(process.pid, signal.SIGTERM)
+            killpg = vars(os)["killpg"]
+            killpg(process.pid, signal.SIGTERM)
             process.wait(timeout=2)
         except (ProcessLookupError, subprocess.TimeoutExpired):
             with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
+                vars(os)["killpg"](process.pid, vars(signal).get("SIGKILL", signal.SIGTERM))
             with suppress(subprocess.TimeoutExpired):
                 process.wait(timeout=2)
         finally:
@@ -204,7 +216,8 @@ class ExecutableAgentAdapter:
             context_file = temp / "context.json"
             output_file = temp / "output.json"
             context_file.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-            env = os.environ.copy()
+            allowed = set(BASE_ENVIRONMENT) | set(self.allowed_environment)
+            env = {name: value for name, value in os.environ.items() if name in allowed}
             env.update(
                 {
                     "DEV_AUTOPILOT_CONTEXT_FILE": str(context_file),
@@ -221,6 +234,7 @@ class ExecutableAgentAdapter:
                 stderr=subprocess.PIPE,
                 start_new_session=True,
             )
+            redactions = tuple(dict.fromkeys((*secret_values(env), *sensitive_values(context))))
             deadline = time.monotonic() + self.settings.timeout_seconds
             stdout = ""
             stderr = ""
@@ -232,14 +246,14 @@ class ExecutableAgentAdapter:
                         return ExecutionResult(
                             status=ResultStatus.SECURITY,
                             summary=f"{self.name} modified git metadata while git writes were disabled",
-                            stdout=stdout,
-                            stderr=stderr,
+                            stdout=redact(stdout, redactions),
+                            stderr=redact(stderr, redactions),
                         )
                     return ExecutionResult(
                         status=ResultStatus.TIMEOUT,
-                        summary=f"{self.name} timed out",
-                        stdout=stdout,
-                        stderr=stderr,
+                        summary=redact(f"{self.name} timed out", redactions),
+                        stdout=redact(stdout, redactions),
+                        stderr=redact(stderr, redactions),
                     )
                 try:
                     stdout, stderr = process.communicate(timeout=min(self._SECURITY_POLL_SECONDS, remaining))
@@ -255,17 +269,17 @@ class ExecutableAgentAdapter:
                         self._terminate_group(process)
                         return ExecutionResult(
                             status=ResultStatus.SECURITY,
-                            summary=f"{self.name} modified git metadata while git writes were disabled",
-                            stdout=stdout,
-                            stderr=stderr,
+                            summary=redact(f"{self.name} modified git metadata while git writes were disabled", redactions),
+                            stdout=redact(stdout, redactions),
+                            stderr=redact(stderr, redactions),
                         )
             completed = subprocess.CompletedProcess(list(self.settings.command), process.returncode, stdout, stderr)
             if before_git is not None and self._git_metadata(repository) != before_git:
                 return ExecutionResult(
                     status=ResultStatus.SECURITY,
-                    summary=f"{self.name} modified git metadata while git writes were disabled",
-                    stdout=completed.stdout,
-                    stderr=completed.stderr,
+                    summary=redact(f"{self.name} modified git metadata while git writes were disabled", redactions),
+                    stdout=redact(completed.stdout, redactions),
+                    stderr=redact(completed.stderr, redactions),
                     exit_code=completed.returncode,
                 )
             if completed.returncode != 0:
@@ -301,17 +315,17 @@ class ExecutableAgentAdapter:
 
                 return ExecutionResult(
                     status=status,
-                    summary=summary,
-                    stdout=completed.stdout,
-                    stderr=completed.stderr,
+                    summary=redact(summary, redactions),
+                    stdout=redact(completed.stdout, redactions),
+                    stderr=redact(completed.stderr, redactions),
                     exit_code=completed.returncode,
                 )
             if not output_file.exists():
                 return ExecutionResult(
                     status=ResultStatus.MALFORMED,
-                    summary=f"{self.name} did not create output JSON",
-                    stdout=completed.stdout,
-                    stderr=completed.stderr,
+                    summary=redact(f"{self.name} did not create output JSON", redactions),
+                    stdout=redact(completed.stdout, redactions),
+                    stderr=redact(completed.stderr, redactions),
                     exit_code=completed.returncode,
                 )
             try:
@@ -319,22 +333,22 @@ class ExecutableAgentAdapter:
             except (OSError, json.JSONDecodeError) as exc:
                 return ExecutionResult(
                     status=ResultStatus.MALFORMED,
-                    summary=f"{self.name} produced invalid JSON: {exc}",
-                    stdout=completed.stdout,
-                    stderr=completed.stderr,
+                    summary=redact(f"{self.name} produced invalid JSON: {exc}", redactions),
+                    stdout=redact(completed.stdout, redactions),
+                    stderr=redact(completed.stderr, redactions),
                     exit_code=completed.returncode,
                 )
             if not isinstance(output, dict):
                 return ExecutionResult(
                     status=ResultStatus.MALFORMED,
-                    summary=f"{self.name} output must be a JSON object",
-                    output={"raw": output},
+                    summary=redact(f"{self.name} output must be a JSON object", redactions),
+                    output=redact({"raw": output}, redactions),
                 )
             return ExecutionResult(
                 status=ResultStatus.SUCCESS,
-                summary=f"{self.name} completed",
-                output=output,
-                stdout=completed.stdout,
-                stderr=completed.stderr,
+                summary=redact(f"{self.name} completed", redactions),
+                output=redact(output, redactions),
+                stdout=redact(completed.stdout, redactions),
+                stderr=redact(completed.stderr, redactions),
                 exit_code=completed.returncode,
             )

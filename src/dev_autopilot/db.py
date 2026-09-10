@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import tempfile
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
@@ -141,7 +143,129 @@ class SQLiteStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._check_schema_compatibility(self.path)
         self._initialize()
+
+    @staticmethod
+    def _check_schema_compatibility(path: Path, *, require_complete: bool = False) -> None:
+        """Reject databases written by a newer release before any mutation."""
+        if not path.exists() or path.stat().st_size == 0:
+            if require_complete:
+                raise PersistenceError("database is empty or missing")
+            return
+        try:
+            connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+            try:
+                table = connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+                ).fetchone()
+                if table is None:
+                    if require_complete:
+                        raise PersistenceError("database is not a Dev Autopilot database")
+                    return
+                row = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
+                if require_complete:
+                    tables = {
+                        name for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                    }
+                    required = {
+                        "schema_migrations",
+                        "runs",
+                        "events",
+                        "phase_results",
+                        "retries",
+                        "run_locks",
+                        "artifacts",
+                        "audit_cache",
+                    }
+                    if not required <= tables:
+                        raise PersistenceError("database is not a complete Dev Autopilot database")
+            finally:
+                connection.close()
+        except sqlite3.DatabaseError as exc:
+            raise PersistenceError(f"cannot inspect database schema: {path}") from exc
+        version = None if row is None else row[0]
+        if version is not None and (not isinstance(version, int) or version > SCHEMA_VERSION):
+            raise PersistenceError(f"unsupported database schema version {version}; this release supports up to {SCHEMA_VERSION}")
+
+    @property
+    def schema_version(self) -> int:
+        """Return the highest schema migration applied to this database."""
+        with self.connect() as connection:
+            row = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
+        if row is None or row[0] is None:
+            raise PersistenceError("database has no schema version")
+        return int(row[0])
+
+    def backup(self, destination: str | Path) -> Path:
+        """Create a consistent SQLite backup, atomically replacing destination."""
+        target = Path(destination)
+        if target.resolve() == self.path.resolve():
+            raise ValueError("backup destination must differ from the database path")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary_name: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent, delete=False) as handle:
+                temporary_name = handle.name
+            with self.connect() as source:
+                destination_connection = sqlite3.connect(temporary_name)
+                try:
+                    source.backup(destination_connection)
+                    check = destination_connection.execute("PRAGMA integrity_check").fetchone()
+                    if check != ("ok",):
+                        raise PersistenceError(f"backup integrity check failed for {target}")
+                finally:
+                    destination_connection.close()
+            os.replace(temporary_name, target)
+            temporary_name = None
+        finally:
+            if temporary_name is not None:
+                with suppress(FileNotFoundError):
+                    os.unlink(temporary_name)
+        return target
+
+    @classmethod
+    def restore(cls, source: str | Path, destination: str | Path) -> SQLiteStore:
+        """Restore a consistent backup into a new database path.
+
+        Existing destinations are rejected to avoid replacing a live WAL database;
+        installation into a new path is atomic.
+        """
+        source_path = Path(source)
+        target = Path(destination)
+        if source_path.resolve() == target.resolve():
+            raise ValueError("restore source and destination must differ")
+        if not source_path.is_file():
+            raise FileNotFoundError(source_path)
+        if target.exists():
+            raise FileExistsError(target)
+        cls._check_schema_compatibility(source_path, require_complete=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary_name: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent, delete=False) as handle:
+                temporary_name = handle.name
+            source_connection = sqlite3.connect(source_path)
+            target_connection = sqlite3.connect(temporary_name)
+            try:
+                source_connection.backup(target_connection)
+                check = target_connection.execute("PRAGMA integrity_check").fetchone()
+                if check != ("ok",):
+                    raise PersistenceError(f"restore integrity check failed for {target}")
+            finally:
+                target_connection.close()
+                source_connection.close()
+            # Hard-link installation is atomic and refuses a target that appeared
+            # after the initial existence check. The temp file is on the same FS.
+            os.link(temporary_name, target)
+        finally:
+            if temporary_name is not None:
+                with suppress(FileNotFoundError):
+                    os.unlink(temporary_name)
+        return cls(target)
+
+    backup_to = backup
+    restore_from = restore
 
     def connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=30, isolation_level=None, factory=_ClosingConnection)
