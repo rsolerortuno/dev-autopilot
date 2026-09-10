@@ -329,9 +329,16 @@ class ContinuousProjectRunner:
                 self.projects.set_project_status(project_run_id, ProjectStatus.BLOCKED, blocker=blocker)
                 return self.projects.get(project_run_id)
             run_id = row["autopilot_run_id"]
-            orchestrator = self.orchestrator_factory(milestone.job)
+            runtime_job = milestone.job
+            if runtime_job.budget.project_id is None:
+                runtime_job = runtime_job.model_copy(
+                    update={
+                        "budget": runtime_job.budget.model_copy(update={"project_id": f"{charter.project_id}:{project_run_id}"})
+                    }
+                )
+            orchestrator = self.orchestrator_factory(runtime_job)
             if run_id is None:
-                run_id = orchestrator.create_run(milestone.job).run_id
+                run_id = orchestrator.create_run(runtime_job).run_id
                 self.projects.set_milestone(
                     project_run_id, milestone.milestone_id, MilestoneStatus.RUNNING, autopilot_run_id=run_id
                 )

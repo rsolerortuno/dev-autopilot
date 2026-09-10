@@ -14,8 +14,11 @@ from pathlib import Path
 from uuid import UUID
 
 from dev_autopilot import cli_storage
+from dev_autopilot.adapters.base import AgentAdapter
 from dev_autopilot.adapters.fake import FakeCommandAdapter, ScriptedAgentAdapter
+from dev_autopilot.adapters.sandbox import DockerAgentAdapter
 from dev_autopilot.adapters.subprocess import ExecutableAgentAdapter, LocalCommandAdapter
+from dev_autopilot.budget import BudgetConfig, BudgetStore
 from dev_autopilot.config import load_job_configuration
 from dev_autopilot.db import SCHEMA_VERSION, SQLiteStore
 from dev_autopilot.engine import TransitionEngine
@@ -23,6 +26,7 @@ from dev_autopilot.errors import AutopilotError, ConfigurationError, TransitionE
 from dev_autopilot.events import EventType
 from dev_autopilot.legacy import migrate_legacy_checkpoint
 from dev_autopilot.models import (
+    AgentCommand,
     AuditReport,
     ExecutionResult,
     JobSpecification,
@@ -32,13 +36,42 @@ from dev_autopilot.models import (
 )
 from dev_autopilot.orchestrator import Orchestrator
 from dev_autopilot.project import ContinuousProjectRunner, ProjectStore, load_project_charter
+from dev_autopilot.providers import BudgetedAgentAdapter
 from dev_autopilot.states import PAUSED_STATES, TERMINAL_STATES, WorkflowState
+from dev_autopilot.telemetry import JsonlTraceSink
 
 DEFAULT_DB = Path(".dev-autopilot/autopilot.sqlite3")
 
 
 def _success(summary: str, output: dict[str, object] | None = None) -> ExecutionResult:
     return ExecutionResult(status=ResultStatus.SUCCESS, summary=summary, output=output or {})
+
+
+def _configured_agent(name: str, settings: AgentCommand | None, job: JobSpecification, store: SQLiteStore) -> AgentAdapter:
+    if settings is None:
+        raise ConfigurationError(f"missing agent settings: {name}")
+    adapter: AgentAdapter
+    if settings.runtime == "docker":
+        adapter = DockerAgentAdapter(name, settings, image=settings.sandbox_image or "", network_policy=settings.sandbox_network)
+    else:
+        adapter = ExecutableAgentAdapter(name, settings)
+    policy = job.budget
+    return BudgetedAgentAdapter(
+        adapter,
+        provider=name,
+        model=settings.model_name,
+        budget=BudgetStore(store.path.with_name("budgets.sqlite3")),
+        config=BudgetConfig(
+            project_id=policy.project_id or f"job-{job.configuration_id}",
+            milestone_id=job.evidence.milestone_id,
+            max_calls=policy.max_calls,
+            max_micro_usd=policy.max_micro_usd,
+            project_max_calls=policy.project_max_calls,
+            project_max_micro_usd=policy.project_max_micro_usd,
+        ),
+        estimated_micro_usd=settings.estimated_micro_usd or 0,
+        sink=JsonlTraceSink(store.path.with_name("provider-traces.jsonl")),
+    )
 
 
 def _build_orchestrator(
@@ -90,19 +123,13 @@ def _build_orchestrator(
     return Orchestrator(
         store,
         command_adapter=LocalCommandAdapter(),
-        codex=ExecutableAgentAdapter("codex", job.agents.codex),  # type: ignore[arg-type]
-        agy=ExecutableAgentAdapter("agy", job.agents.agy),  # type: ignore[arg-type]
-        claude_reviewer=ExecutableAgentAdapter(
-            "claude-reviewer",
-            job.agents.claude_reviewer,  # type: ignore[arg-type]
-        ),
+        codex=_configured_agent("codex", job.agents.codex, job, store),
+        agy=_configured_agent("agy", job.agents.agy, job, store),
+        claude_reviewer=_configured_agent("claude-reviewer", job.agents.claude_reviewer, job, store),
         claude_supervisor=(
             None
             if job.agents.claude_supervisor is None
-            else ExecutableAgentAdapter(
-                "claude-supervisor",
-                job.agents.claude_supervisor,
-            )
+            else _configured_agent("claude-supervisor", job.agents.claude_supervisor, job, store)
         ),
         progress=progress,
     )

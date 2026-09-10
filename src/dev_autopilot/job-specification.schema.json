@@ -19,6 +19,57 @@
           "title": "Command",
           "type": "array"
         },
+        "estimated_micro_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Micro Usd"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "runtime": {
+          "default": "local",
+          "enum": [
+            "local",
+            "docker"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        },
+        "sandbox_image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sandbox Image"
+        },
+        "sandbox_network": {
+          "default": "none",
+          "title": "Sandbox Network",
+          "type": "string"
+        },
         "timeout_seconds": {
           "default": 3600,
           "exclusiveMinimum": 0,
@@ -81,6 +132,64 @@
         }
       },
       "title": "AgentSettings",
+      "type": "object"
+    },
+    "BudgetPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "max_calls": {
+          "default": 100,
+          "exclusiveMinimum": 0,
+          "title": "Max Calls",
+          "type": "integer"
+        },
+        "max_micro_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Micro Usd"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "project_max_calls": {
+          "default": 1000,
+          "exclusiveMinimum": 0,
+          "title": "Project Max Calls",
+          "type": "integer"
+        },
+        "project_max_micro_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Max Micro Usd"
+        }
+      },
+      "title": "BudgetPolicy",
       "type": "object"
     },
     "EvidencePolicy": {
@@ -354,6 +463,16 @@
       "minItems": 1,
       "title": "Allowed Paths",
       "type": "array"
+    },
+    "budget": {
+      "$ref": "#/$defs/BudgetPolicy",
+      "default": {
+        "max_calls": 100,
+        "max_micro_usd": null,
+        "project_id": null,
+        "project_max_calls": 1000,
+        "project_max_micro_usd": null
+      }
     },
     "evidence": {
       "$ref": "#/$defs/EvidencePolicy",

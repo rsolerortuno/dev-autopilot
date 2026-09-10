@@ -188,7 +188,7 @@ class Orchestrator:
                     supervised = self.claude_supervisor.execute(
                         task="Diagnose this operational orchestration failure without modifying product files",
                         repository=Path(run.job.repository),
-                        context={"state": run.state.value, "error": f"{type(exc).__name__}: {exc}"},
+                        context={**self._agent_context(run), "error": f"{type(exc).__name__}: {exc}"},
                         output_contract='{"summary": "non-empty operational diagnosis"}',
                     )
                     diagnosis = f"; supervisor: {supervised.summary}"
@@ -752,8 +752,14 @@ class Orchestrator:
     def _agent_context(self, run: RunRecord) -> dict[str, object]:
         changed = self.commands.changed_files(repository=Path(run.job.repository))
         findings = self.ledger.export_findings(run.run_id)
+        retries = {
+            name: (retry.count if (retry := self.store.get_retry(run.run_id, name)) else 0)
+            for name in ("codex", "agy", "claude-reviewer", "claude-supervisor")
+        }
+        invocation = json.dumps([str(run.run_id), run.state.value, run.correction_rounds, retries], sort_keys=True)
         context: dict[str, object] = {
             "run_id": str(run.run_id),
+            "invocation_id": hashlib.sha256(invocation.encode()).hexdigest(),
             "state": run.state.value,
             "objective": run.job.objective,
             "milestone_id": run.job.evidence.milestone_id,

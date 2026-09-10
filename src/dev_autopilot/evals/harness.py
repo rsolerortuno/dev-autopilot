@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 MAX_CAPTURE_BYTES = 1_048_576
 
 
@@ -86,11 +85,13 @@ def run_task(task: Task, command: list[str], timeout: float = 10.0) -> EvalResul
                         process.kill()
                     process.wait()
                     raise
+
                 def _tail(stream: Any) -> str:
                     stream.seek(0, 2)
                     end = stream.tell()
                     stream.seek(max(0, end - MAX_CAPTURE_BYTES))
                     return stream.read(MAX_CAPTURE_BYTES).decode("utf-8", errors="replace")
+
                 stderr = _tail(stderr_file)
                 try:
                     oracle_ok = _oracle(task, task_dir)

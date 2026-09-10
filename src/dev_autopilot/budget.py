@@ -5,10 +5,10 @@ from __future__ import annotations
 import sqlite3
 import threading
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 
 @dataclass(frozen=True)
@@ -147,7 +147,9 @@ class BudgetStore:
                 used_calls >= row["max_calls"]
                 or (row["project_max_calls"] is not None and project_calls >= row["project_max_calls"])
                 or (row["max_micro_usd"] is not None and used_cost + estimated_micro_usd > row["max_micro_usd"])
-                or (row["project_max_micro_usd"] is not None and project_cost + estimated_micro_usd > row["project_max_micro_usd"])
+                or (
+                    row["project_max_micro_usd"] is not None and project_cost + estimated_micro_usd > row["project_max_micro_usd"]
+                )
             ):
                 db.rollback()
                 raise BudgetExceeded("budget exhausted")
@@ -214,12 +216,33 @@ class BudgetStore:
                 if row["actual_micro_usd"] != actual_micro_usd:
                     raise ValueError("settled reservation cannot be rewritten")
                 return
-            config = db.execute("SELECT * FROM budget_config WHERE project_id=? AND milestone_id=?", (row["project_id"], row["milestone_id"])).fetchone()
+            config = db.execute(
+                "SELECT * FROM budget_config WHERE project_id=? AND milestone_id=?", (row["project_id"], row["milestone_id"])
+            ).fetchone()
             cost = actual_micro_usd if actual_micro_usd is not None else row["estimated_micro_usd"]
-            milestone_total = db.execute("SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) FROM budget_reservation WHERE project_id=? AND milestone_id=?", (row["project_id"], row["milestone_id"])).fetchone()[0] - row["estimated_micro_usd"] + cost
-            project_total = db.execute("SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) FROM budget_reservation WHERE project_id=?", (row["project_id"],)).fetchone()[0] - row["estimated_micro_usd"] + cost
-            if (config["max_micro_usd"] is not None and milestone_total > config["max_micro_usd"]) or (config["project_max_micro_usd"] is not None and project_total > config["project_max_micro_usd"]):
-                db.execute("UPDATE budget_reservation SET actual_micro_usd=?,status='settled' WHERE call_id=?", (actual_micro_usd, call_id))
+            milestone_total = (
+                db.execute(
+                    "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) FROM budget_reservation WHERE project_id=? AND milestone_id=?",
+                    (row["project_id"], row["milestone_id"]),
+                ).fetchone()[0]
+                - row["estimated_micro_usd"]
+                + cost
+            )
+            project_total = (
+                db.execute(
+                    "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) FROM budget_reservation WHERE project_id=?",
+                    (row["project_id"],),
+                ).fetchone()[0]
+                - row["estimated_micro_usd"]
+                + cost
+            )
+            if (config["max_micro_usd"] is not None and milestone_total > config["max_micro_usd"]) or (
+                config["project_max_micro_usd"] is not None and project_total > config["project_max_micro_usd"]
+            ):
+                db.execute(
+                    "UPDATE budget_reservation SET actual_micro_usd=?,status='settled' WHERE call_id=?",
+                    (actual_micro_usd, call_id),
+                )
                 db.commit()
                 raise BudgetExceeded("budget exhausted; measured usage persisted")
             db.execute(

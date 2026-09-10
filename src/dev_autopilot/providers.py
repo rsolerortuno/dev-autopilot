@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
 import hashlib
+from contextlib import suppress
 from pathlib import Path
 from typing import Protocol
 
@@ -56,13 +56,35 @@ class BudgetedAgentAdapter:
             with suppress(Exception):
                 emit_trace(
                     self.sink,
-                    TraceRecord(call_id, self.provider, self.model, str(status), (now() - started) * 1000, actual_micro_usd, self.config.project_id, self.config.milestone_id, self.run_id, self.phase),
+                    TraceRecord(
+                        call_id,
+                        self.provider,
+                        self.model,
+                        str(status),
+                        (now() - started) * 1000,
+                        actual_micro_usd,
+                        self.config.project_id,
+                        self.config.milestone_id,
+                        self.run_id,
+                        self.phase,
+                    ),
                 )
             return result
         except Exception:
             with suppress(Exception):
                 emit_trace(
                     self.sink,
-                    TraceRecord(call_id, self.provider, self.model, "error", (now() - started) * 1000, None, self.config.project_id, self.config.milestone_id, self.run_id, self.phase),
+                    TraceRecord(
+                        call_id,
+                        self.provider,
+                        self.model,
+                        "error",
+                        (now() - started) * 1000,
+                        None,
+                        self.config.project_id,
+                        self.config.milestone_id,
+                        self.run_id,
+                        self.phase,
+                    ),
                 )
             raise
