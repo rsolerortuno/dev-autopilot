@@ -41,7 +41,7 @@ def test_docker_runtime_is_nonroot_readonly_networkless_and_cleans_timeout(tmp_p
         "assert int(open('/proc/self/status').read().split('CapEff:\\t',1)[1].splitlines()[0],16)==0; "
         "assert set(os.listdir('/sys/class/net')) <= {'lo'}; "
         "root_mount=next(line for line in open('/proc/mounts') if line.split()[1]=='/'); "
-        "assert 'ro' in line.split()[3].split(','); "
+        "assert 'ro' in root_mount.split()[3].split(','); "
         f"exec({readonly_probe!r}); "
         "assert not write_probe(); "
         "pathlib.Path(os.environ['DEV_AUTOPILOT_OUTPUT_FILE']).write_text(json.dumps({'uid':uid,'ok':True}))",
