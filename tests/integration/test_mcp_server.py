@@ -68,9 +68,7 @@ def test_mcp_status_and_evidence_are_read_only_summaries(tmp_path: Path, job) ->
             evidence = await client.call_tool("evidence_summary", {"run_id": str(run.run_id)})
             assert not status.is_error and not evidence.is_error
             unknown = await client.call_tool("run_status", {"run_id": "00000000-0000-0000-0000-000000000000"})
-            unknown_evidence = await client.call_tool(
-                "evidence_summary", {"run_id": "00000000-0000-0000-0000-000000000000"}
-            )
+            unknown_evidence = await client.call_tool("evidence_summary", {"run_id": "00000000-0000-0000-0000-000000000000"})
             rendered = f"{status}{evidence}"
             assert str(run.run_id) in rendered
             assert "PHASE_STARTED" in rendered
