@@ -1,0 +1,47 @@
+name: Docker sandbox smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/dev_autopilot/adapters/sandbox.py"
+      - "tests/integration/test_docker_live.py"
+      - ".github/workflows/docker-smoke.yml"
+  pull_request:
+    paths:
+      - "src/dev_autopilot/adapters/sandbox.py"
+      - "tests/integration/test_docker_live.py"
+      - ".github/workflows/docker-smoke.yml"
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Pull and resolve official image digest
+        id: image
+        env:
+          IMAGE_TAG: python:3.12-slim
+        run: |
+          docker pull "$IMAGE_TAG"
+          image_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE_TAG")"
+          test -n "$image_digest"
+          echo "image=$image_digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Docker sandbox image"
+            echo '```'
+            echo "$image_digest"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Run live Docker smoke test
+        env:
+          DEV_AUTOPILOT_DOCKER_IMAGE: ${{ steps.image.outputs.image }}
+        run: python -m pytest tests/integration/test_docker_live.py -q
