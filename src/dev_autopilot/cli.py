@@ -18,6 +18,7 @@ from dev_autopilot.adapters.base import AgentAdapter
 from dev_autopilot.adapters.fake import FakeCommandAdapter, ScriptedAgentAdapter
 from dev_autopilot.adapters.sandbox import DockerAgentAdapter
 from dev_autopilot.adapters.subprocess import ExecutableAgentAdapter, LocalCommandAdapter
+from dev_autopilot.authorization import ApprovalGrantStore
 from dev_autopilot.budget import BudgetConfig, BudgetStore
 from dev_autopilot.config import load_job_configuration
 from dev_autopilot.db import SCHEMA_VERSION, SQLiteStore
@@ -278,6 +279,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     approve = sub.add_parser("approve")
     approve.add_argument("run_id", type=UUID)
+    approve.add_argument("--grant-id", help="one-use approval grant bound to this run and current diff")
+    approve.add_argument("--actor", default="human", help="human actor named by the approval grant")
+
+    approval = sub.add_parser("approval", help="issue one-use human approval grants")
+    approval_sub = approval.add_subparsers(dest="approval_command", required=True)
+    approval_issue = approval_sub.add_parser("issue")
+    approval_issue.add_argument("run_id", type=UUID)
+    approval_issue.add_argument("--actor", required=True)
+    approval_issue.add_argument("--ttl-seconds", type=int, default=900)
 
     archive = sub.add_parser("archive")
     archive.add_argument("run_id", type=UUID)
@@ -381,6 +391,18 @@ def main(argv: list[str] | None = None) -> int:
 
         store = SQLiteStore(args.db)
 
+        if args.command == "approval" and args.approval_command == "issue":
+            run = store.get_run(args.run_id)
+            if run.state is not WorkflowState.READY_FOR_HUMAN_REVIEW:
+                raise TransitionError("approval grants require READY_FOR_HUMAN_REVIEW runs")
+            diff_sha256 = LocalCommandAdapter().diff_sha256(repository=Path(run.job.repository))
+            grant = ApprovalGrantStore(store.path.with_name("authorization.sqlite3")).issue(
+                run_id=str(args.run_id), action="approve", diff_sha256=diff_sha256,
+                actor=args.actor, ttl_seconds=args.ttl_seconds,
+            )
+            print(grant)
+            return 0
+
         if args.command == "project":
             project_store = ProjectStore(store)
             if args.project_command == "status":
@@ -469,6 +491,15 @@ def main(argv: list[str] | None = None) -> int:
             run = store.get_run(args.run_id)
             if run.state is not WorkflowState.READY_FOR_HUMAN_REVIEW:
                 raise TransitionError("only READY_FOR_HUMAN_REVIEW runs can be approved")
+            if args.grant_id:
+                diff_sha256 = LocalCommandAdapter().diff_sha256(repository=Path(run.job.repository))
+                ApprovalGrantStore(store.path.with_name("authorization.sqlite3")).consume(
+                    args.grant_id,
+                    run_id=str(args.run_id),
+                    action="approve",
+                    diff_sha256=diff_sha256,
+                    actor=args.actor,
+                )
             store.mark_approved(args.run_id)
             store.append_event(args.run_id, EventType.HUMAN_APPROVED, actor="human", reason="approved")
             _print_run(store.get_run(args.run_id))
