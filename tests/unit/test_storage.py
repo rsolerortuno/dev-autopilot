@@ -165,3 +165,42 @@ def test_unimplemented_format_strategy_fails_closed(tmp_path):
             part_size_bytes=10,
             strategy=FormatStrategy.PARQUET_ROW_GROUP,
         )
+
+
+@pytest.mark.parametrize("method", ["put_bytes", "put_file"])
+def test_local_replace_retries_transient_windows_permission(tmp_path, monkeypatch, method):
+    backend = LocalStorageBackend(tmp_path / "store")
+    source = _write(tmp_path / "source.bin", b"payload")
+    original = os.replace
+    attempts = 0
+    monkeypatch.setattr("dev_autopilot.storage.backend._is_windows_runtime", lambda: True)
+
+    def flaky_replace(src, dst):
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 2:
+            raise PermissionError(5, "sharing violation")
+        return original(src, dst)
+
+    monkeypatch.setattr("dev_autopilot.storage.backend.os.replace", flaky_replace)
+    digest = (
+        backend.put_bytes("lease.json", b"payload")
+        if method == "put_bytes"
+        else backend.put_file("lease.json", source)
+    )
+    assert digest == hashlib.sha256(b"payload").hexdigest()
+    assert backend.get_bytes("lease.json") == b"payload"
+    assert attempts == 3
+
+
+def test_local_replace_propagates_persistent_windows_permission(tmp_path, monkeypatch):
+    backend = LocalStorageBackend(tmp_path / "store")
+    monkeypatch.setattr("dev_autopilot.storage.backend._is_windows_runtime", lambda: True)
+
+    def denied(src, dst):
+        raise PermissionError(5, "access denied")
+
+    monkeypatch.setattr("dev_autopilot.storage.backend.os.replace", denied)
+    with pytest.raises(PermissionError):
+        backend.put_bytes("lease.json", b"payload")
+    assert not list((tmp_path / "store").glob("*.partial"))
