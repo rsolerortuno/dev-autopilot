@@ -39,7 +39,61 @@ def _terms(text: str) -> set[str]:
 
 def _tokens(text: str) -> list[str]:
     separated = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
-    return re.findall(r"[a-z][a-z0-9]{1,}", separated.lower())
+    return re.findall(r"[a-z][a-z0-9]{1,}|[0-9]+", separated.lower())
+
+
+def _batch_sizes(root: Path, object_ids: list[str]) -> dict[str, int]:
+    if not object_ids:
+        return {}
+    result = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "--batch-check"],
+        input=("".join(f"{object_id}\n" for object_id in object_ids)).encode("ascii"),
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if result.returncode:
+        raise ValueError("repository inspection failed")
+    sizes: dict[str, int] = {}
+    for object_id, line in zip(object_ids, result.stdout.splitlines(), strict=True):
+        header = line.decode("ascii", errors="strict").split()
+        if len(header) != 3 or header[0] != object_id or header[1] != "blob":
+            raise ValueError("repository inspection failed")
+        sizes[object_id] = int(header[2])
+    return sizes
+
+
+def _batch_blobs(root: Path, object_ids: list[str], sizes: dict[str, int]) -> dict[str, bytes]:
+    if not object_ids:
+        return {}
+    result = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "--batch"],
+        input=("".join(f"{object_id}\n" for object_id in object_ids)).encode("ascii"),
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if result.returncode:
+        raise ValueError("repository inspection failed")
+    blobs: dict[str, bytes] = {}
+    offset = 0
+    for object_id in object_ids:
+        end = result.stdout.find(b"\n", offset)
+        if end < 0:
+            raise ValueError("repository inspection failed")
+        header = result.stdout[offset:end].decode("ascii", errors="strict").split()
+        if len(header) != 3 or header[0] != object_id or header[1] != "blob":
+            raise ValueError("repository inspection failed")
+        size = int(header[2])
+        if size != sizes[object_id]:
+            raise ValueError("repository changed during indexing")
+        start = end + 1
+        stop = start + size
+        if stop >= len(result.stdout) or result.stdout[stop : stop + 1] != b"\n":
+            raise ValueError("repository inspection failed")
+        blobs[object_id] = result.stdout[start:stop]
+        offset = stop + 1
+    return blobs
 
 
 @dataclass(frozen=True)
@@ -66,6 +120,7 @@ class RetrievalIndex:
         commit = _snapshot(root)
         passages: list[Passage] = []
         total = 0
+        entries: list[tuple[str, str, bytes]] = []
         for raw in sorted(_git(root, "ls-tree", "-r", "-z", commit).split(b"\0")):
             if not raw:
                 continue
@@ -79,15 +134,27 @@ class RetrievalIndex:
                 continue
             if any(part.startswith(".") or _SECRET_NAME.search(part) for part in Path(relative).parts):
                 continue
-            # Read immutable Git objects, never a mutable working-tree file.
             blob = object_id.decode("ascii")
-            size = int(_git(root, "cat-file", "-s", blob))
+            entries.append((blob, relative, encoded_path))
+        object_ids = list(dict.fromkeys(blob for blob, _, _ in entries))
+        sizes = _batch_sizes(root, object_ids)
+        selected: list[str] = []
+        selected_set: set[str] = set()
+        for blob, _, _ in entries:
+            size = sizes[blob]
             if size > max_file_bytes:
                 continue
-            total += size
-            if total > max_total_bytes:
+            if total + size > max_total_bytes:
                 raise ValueError("repository exceeds retrieval byte budget")
-            data = _git(root, "cat-file", "blob", blob)
+            total += size
+            if blob not in selected_set:
+                selected.append(blob)
+                selected_set.add(blob)
+        blobs = _batch_blobs(root, selected, sizes) if selected else {}
+        for blob, relative, _ in entries:
+            if blob not in blobs:
+                continue
+            data = blobs[blob]
             try:
                 content = data.decode("utf-8")
             except UnicodeDecodeError:

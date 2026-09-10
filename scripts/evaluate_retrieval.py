@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
+import time
 from pathlib import Path
 
 from dev_autopilot.retrieval import RetrievalIndex
@@ -122,7 +124,9 @@ def _make_fixture(root: Path) -> str:
     return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
 
 
-def evaluate(output: Path, repository: Path | None = None) -> dict[str, object]:
+def evaluate(output: Path, repository: Path | None = None, *, ranking: str = "bm25") -> dict[str, object]:
+    if ranking not in {"bm25", "baseline"}:
+        raise ValueError("unsupported ranking")
     output = output.resolve()
     if output.exists() and (not output.is_dir() or any(output.iterdir())):
         raise ValueError(f"refusing to overwrite non-empty output directory: {output}")
@@ -137,7 +141,9 @@ def evaluate(output: Path, repository: Path | None = None) -> dict[str, object]:
         repository = repository.resolve(strict=True)
         commit = None
     try:
+        started = time.perf_counter()
         index = RetrievalIndex.build(repository)
+        build_seconds = time.perf_counter() - started
     except (OSError, ValueError) as exc:
         report = {
             "mode": "offline deterministic retrieval evaluation",
@@ -156,9 +162,20 @@ def evaluate(output: Path, repository: Path | None = None) -> dict[str, object]:
     rows = []
     reciprocal_ranks = []
     hits = []
+    search_started = time.perf_counter()
     for item in queries:
         query = item["query"]
         result = index.search(repository, query, top_k=5)
+        if ranking == "baseline":
+            terms = set(re.findall(r"[a-z][a-z0-9_]{1,}", query.lower()))
+            ranked = sorted(
+                (
+                    (len(terms & set(re.findall(r"[a-z][a-z0-9_]{1,}", (p.content + " " + p.path).lower()))), p)
+                    for p in index.passages
+                ),
+                key=lambda item: (-item[0], item[1].path, item[1].start_line),
+            )
+            result = {"matches": [{"path": passage.path} for score, passage in ranked if score][:5]}
         paths = [str(match["path"]) for match in result["matches"]]
         expected = item["expected_paths"]
         rank = next((position for position, path in enumerate(paths, 1) if path in expected), None)
@@ -170,8 +187,10 @@ def evaluate(output: Path, repository: Path | None = None) -> dict[str, object]:
         "provider_evaluation": False,
         "model_quality_claim": False,
         "dataset": dataset,
+        "ranking": ranking,
         "excluded_paths": sorted(excluded_paths),
         "benchmark_use": "development; not held-out model evaluation",
+        "timings_seconds": {"build": build_seconds, "queries": time.perf_counter() - search_started},
         "fixture_commit": commit,
         "index_commit": index.commit,
         "queries_sha256": hashlib.sha256(json.dumps(queries, sort_keys=True).encode()).hexdigest(),
@@ -188,8 +207,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repository", type=Path, help="evaluate an existing clean Git repository")
+    parser.add_argument("--ranking", choices=("bm25", "baseline"), default="bm25")
     args = parser.parse_args()
-    report = evaluate(args.output, args.repository)
+    report = evaluate(args.output, args.repository, ranking=args.ranking)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 2 if report.get("status") == "blocked" else 0
 
