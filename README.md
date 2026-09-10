@@ -1,17 +1,17 @@
 # Dev Autopilot
 
-**Development branch: 0.7.0.dev0, progressing toward 1.0.0.**
+**Development preview: 0.9.0, progressing toward 1.0.0.**
 See [execution state](docs/execution-state.json), the [1.0.0 plan](docs/PLAN-1.0.0.md)
-and the [capability/evidence matrix](docs/PORTFOLIO-EVIDENCE.md). Local fixture
-tests and the offline demo pass; live provider comparisons, Linux/Colab gates
-and the owner's final release review remain pending.
+and the [capability/evidence matrix](docs/PORTFOLIO-EVIDENCE.md). This is a CLI
+preview with no GUI. Live provider comparisons, budget evidence, Linux/Colab
+gates and the owner's final release review remain pending.
 
 Dev Autopilot is a persistent, auditable development orchestrator for scientific
 software. It runs bounded implementation, deterministic validation, adversarial
 audit, independent review, correction, and evidence packaging while SQLite
 preserves every state transition across restarts.
 
-**Version 0.6.0 is the real-project hardening release.** It preserves the
+**Version 0.9.0 is a preview release for CLI workflows.** It preserves the
 M00-M05 architecture from v0.5.0 while incorporating fixes validated during a
 real autonomous TargetIntel-IO milestone:
 
@@ -24,30 +24,71 @@ real autonomous TargetIntel-IO milestone:
 - stricter changed-file gate handling;
 - fixed-size SHA-256 Google Drive appProperties keys for long logical object paths;
 - regression coverage for the newly hardened execution paths.
+- bounded lexical retrieval over clean Git snapshots with BM25-style ranking,
+  filename intent, batch reads, context limits, provenance, and offline reports;
+- durable offline soak checks for lease expiry, fencing, terminal publication,
+  SQLite reopen, and budget denial;
+- read-only health inspection, digest-required container packaging, and a
+  deterministic offline demonstration with JSON/HTML evidence.
 
 The autonomous authority boundary still ends before commit, push, pull request,
 tag, release publication, or merge. A human approves the final release.
 
 ## Operating model
 
-```text
-project charter
-    -> ordered milestone
-    -> baseline capture
-    -> implementer
-    -> deterministic scope and test gates
-    -> adversarial audit
-    -> independent review
-    -> bounded correction and re-review
-    -> point-by-point milestone acceptance
-    -> verified review bundle
-    -> next milestone
-    -> READY_FOR_HUMAN_RELEASE
+```mermaid
+flowchart LR
+    A[Project charter] --> B[Ordered milestone]
+    B --> C[Baseline capture]
+    C --> D[Implementer]
+    D --> E[Scope and test gates]
+    E --> F[Adversarial audit]
+    F --> G[Independent review]
+    G --> H[Correction and re-review]
+    H --> I[Milestone acceptance]
+    I --> J[Verified review bundle]
+    J --> K[Next milestone]
+    K --> B
+    I --> L[READY_FOR_HUMAN_REVIEW]
 ```
 
 The implementer cannot approve its own work. Review conclusions are attached to
 the exact repository diff. Any later change invalidates those conclusions.
 Unresolved or invalidated P0/P1 findings prevent milestone acceptance.
+
+### Quota and restart behavior
+
+Calls reserve durable budget before execution. A quota result pauses the run,
+and a later process can reopen SQLite and resume when the persisted retry time
+is due. The same reservation ID cannot be claimed twice.
+
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant B as BudgetStore
+    participant S as SQLite
+    O->>B: reserve(call_id, estimate)
+    B->>S: persist pending reservation
+    O->>B: claim execution
+    B-->>O: provider quota
+    O->>S: persist PAUSED_QUOTA and retry time
+    Note over O: process may stop here
+    O->>S: reopen state after restart
+    O->>S: resume when retry is due
+    O->>B: reserve next attempt
+```
+
+The queue uses the same durable pattern for worker leases and fencing:
+
+```mermaid
+stateDiagram-v2
+    [*] --> QUEUED
+    QUEUED --> RUNNING: claim lease
+    RUNNING --> QUEUED: lease expires / reclaim
+    RUNNING --> COMPLETED: owner publishes terminal result
+    RUNNING --> FAILED: owner publishes failure
+    RUNNING --> COMPLETED: crash after publish, recovery keeps terminal state
+```
 
 ## What M05 guarantees
 
@@ -86,6 +127,17 @@ python -m pip install -e '.[dev,drive]'
 ```
 
 Python 3.11 or newer is required.
+
+For the 0.9.0 preview, install a wheel from the [GitHub Releases](https://github.com/rsolerortuno/dev-autopilot/releases) page after
+checking its SHA-256, or install from source for development:
+
+```bash
+python -m pip install dev-autopilot==0.9.0
+python -m pip install -e '.[dev]'
+```
+
+The supported process environments are Linux and WSL2 with Python 3.11, 3.12,
+or 3.13. The project remains CLI-only; no graphical interface is included.
 
 ## Continuous no-questions project
 
@@ -320,7 +372,10 @@ CI covers Python 3.11, 3.12, and 3.13, installs the Drive extra, validates all
 JSON schemas and the Colab notebook, performs a fresh-wheel smoke test, runs a
 dependency audit, and provides a separate CodeQL workflow.
 
-See `VALIDATION.md` for the exact local evidence included with this release.
+The current checkpoint records 418 passing tests and 1 skipped test. Docker
+checks are a separate gate and must be approved before a release candidate;
+they are not folded into the offline test count. See `VALIDATION.md` for the
+exact evidence included with the checkpoint.
 
 ## Current limitations
 
@@ -341,3 +396,8 @@ See `VALIDATION.md` for the exact local evidence included with this release.
 
 These limitations are explicit so a review bundle never claims a stronger
 operational guarantee than the evidence supports.
+- The offline soak is an incomplete operational exercise (approximately two
+  hours reported by the owner), not proof of an eight-hour run or Colab job.
+- Provider benchmark comparisons and budget-backed cost evidence are pending.
+- No 1.0.0 release or quality claim is made by this 0.9.0 preview; a live
+  provider benchmark still requires a planned dataset, budget, and analysis.
