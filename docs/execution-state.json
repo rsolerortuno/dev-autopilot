@@ -66,12 +66,13 @@
     },
     "T15": {
       "status": "implemented_pending_final_validation",
-      "review": "reviewed with corrections; final integration review pending"
+      "review": "reviewed with corrections; final integration review pending",
+      "completed": "Git batch reads with pre-read budgets, immutable provenance, lexical ranking; development Recall@5=0.90"
     },
     "T16": {
       "status": "implemented_pending_final_validation",
       "review": "reviewed with corrections; final integration review pending",
-      "remaining": "20-query retrieval benchmark and measured context utility"
+      "remaining": "Context utility ablation with real agents and independent evaluation set"
     },
     "T17": {
       "status": "implemented_pending_external_validation",
@@ -107,26 +108,46 @@
     "eight_hour_soak": "not run",
     "human_portfolio_defense": "pending owner",
     "github_write": "git unauthenticated; GitHub connector create_tree returned 403 Resource not accessible by integration",
-    "linux_ci": "pending writable GitHub connection or Linux runtime"
+    "linux_ci": "pending writable GitHub connection or Linux runtime",
+    "github_latest_read": "Connector metadata discovery listed get_repo, but invocation returned Unknown tool; earlier writes returned 403"
   },
-  "updated_at": "2026-09-10T07:43:59.355294+00:00",
-  "integration_head": "4f5c6bad65b8ea6645a199ae1ca5cd5b865b4b10",
+  "updated_at": "2026-09-10T20:36:01.459467+00:00",
+  "integration_head": "482e1e0bc967f81d800e2c245ca15d982bb7d05b",
   "development_version": "0.7.0.dev0",
   "local_validation": {
     "command": "pytest --cov=dev_autopilot --cov-fail-under=80 -q",
-    "passed": 401,
+    "passed": 414,
     "skipped": 1,
-    "coverage_percent": 82.78,
-    "code_commit": "5132e64",
+    "coverage_percent": 83.25,
+    "code_commit": "90600ff",
     "scope": "Windows Python 3.12; Linux process-group test skipped",
     "ruff": "passed",
     "mypy": "53 source files passed",
-    "wheel_demo": "passed with exact wheel; synthetic providers"
+    "wheel_demo": "passed with exact wheel; synthetic providers",
+    "test_suite_commit": "482e1e0",
+    "retrieval": {
+      "queries": 20,
+      "recall_at_5": 0.9,
+      "mrr": 0.5,
+      "baseline_recall_at_5": 0.4,
+      "repository_commit": "ae9e13bafc4dc062f2dd39b066dd5e9e04d9f522",
+      "scope": "development queries; not an unseen holdout or model quality measurement"
+    }
   },
   "notebook": {
     "remote_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
     "sync_status": "verified SHA-256 readback",
     "wheel_file_id": "1iIdP_b9ChPRSnllES8wruCA2e9NzriGf",
-    "build_source_commit": "5132e64"
+    "build_source_commit": "90600ff"
+  },
+  "coordinator_preference": {
+    "model": "gpt-6-astra",
+    "reasoning_effort": "low",
+    "controlled_by": "host model selector"
+  },
+  "subagents": {
+    "model": "gpt-5.6-luna",
+    "maximum_concurrent": 3,
+    "isolation": "separate worktrees"
   }
 }

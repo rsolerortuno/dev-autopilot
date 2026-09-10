@@ -8,11 +8,15 @@
     "notebooks": "1jykDRZgRmH_zIM4ubV498XURJhstxtj4"
   },
   "notebook_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
-  "notebook_sha256": "122c8db92bc4d0c89e72410e150ae10e688f18a08dda3383f647c504278824ef",
+  "notebook_sha256": "be2e7583a3ca62d383499b3a6eb5348f1e247c95a0afe530d6bfa6f9f3a5490b",
   "notebook_readback_verified": true,
   "transfer_policy": "stream/resumable or verified parts; SHA-256 readback",
   "worker_limit_until_atomic_coordination": 1,
   "wheel_file_id": "1iIdP_b9ChPRSnllES8wruCA2e9NzriGf",
-  "wheel_sha256": "c2579a114c5234370bbd7eed71048c6d8cb5abb268fb2f0a137f3fcfb9e53026",
-  "wheel_readback_verified": true
+  "wheel_sha256": "7134270842232e39f1f62a228237c1e2f674ced606ce9ef73f48e6ae11159b0b",
+  "wheel_readback_verified": true,
+  "checkpoint_bundle_file_id": "1HUWc9AhR7_10Hf16905glW_9XwqQ56yV",
+  "artifact_manifest_file_id": "1gxT9fXogD-XyPRfwYp_P43dxm6vFqnN8",
+  "execution_state_file_id": "1LCywTw3nlhglTeXmL6FtFo_oDyPBmVu1",
+  "sdist_file_id": "1dqKFMz22vk9gkzDr3ZWGEFdCKo8TSJ4J"
 }
