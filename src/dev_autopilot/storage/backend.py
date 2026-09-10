@@ -7,9 +7,10 @@ import json
 import os
 import time
 import uuid
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import BinaryIO, Protocol, runtime_checkable
 
 _READ_BLOCK = 4 * 1024 * 1024
 _REPLACE_ATTEMPTS = 4
@@ -89,6 +90,24 @@ class LocalStorageBackend:
                     raise
                 time.sleep(0.01 * (attempt + 1))
 
+    @staticmethod
+    @contextmanager
+    def _open_read(path: Path) -> Iterator[BinaryIO]:
+        """Open a local object, tolerating brief Windows sharing locks."""
+        for attempt in range(_REPLACE_ATTEMPTS):
+            try:
+                handle = path.open("rb")
+            except PermissionError:
+                if not _is_windows_runtime() or attempt == _REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
+            else:
+                try:
+                    yield handle
+                finally:
+                    handle.close()
+                return
+
     def put_bytes(self, key: str, data: bytes) -> str:
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,12 +163,13 @@ class LocalStorageBackend:
     def get_range(self, key: str, *, offset: int, length: int) -> bytes:
         if offset < 0 or length < 0:
             raise ValueError("offset and length must be non-negative")
-        with self._path(key).open("rb") as handle:
+        with self._open_read(self._path(key)) as handle:
             handle.seek(offset)
             return handle.read(length)
 
     def get_bytes(self, key: str) -> bytes:
-        return self._path(key).read_bytes()
+        with self._open_read(self._path(key)) as handle:
+            return handle.read()
 
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
@@ -159,7 +179,7 @@ class LocalStorageBackend:
 
     def sha256(self, key: str) -> str:
         digest = hashlib.sha256()
-        with self._path(key).open("rb") as handle:
+        with self._open_read(self._path(key)) as handle:
             for block in iter(lambda: handle.read(_READ_BLOCK), b""):
                 digest.update(block)
         return digest.hexdigest()
