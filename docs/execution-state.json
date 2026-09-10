@@ -28,9 +28,9 @@
       "review": "reviewed with corrections; final integration review pending"
     },
     "T06": {
-      "status": "implementation_review",
+      "status": "implemented_pending_external_validation",
       "branch": "agent/luna-platform",
-      "remaining": "CLI approval grant integration and independent review"
+      "remaining": "Local opt-in grants implemented and reviewed; authenticated multi-user enforcement is out of scope"
     },
     "T07": {
       "status": "implemented_pending_final_validation",
@@ -109,15 +109,15 @@
     "github_write": "git unauthenticated; GitHub connector create_tree returned 403 Resource not accessible by integration",
     "linux_ci": "pending writable GitHub connection or Linux runtime"
   },
-  "updated_at": "2026-09-10T07:38:17.415509+00:00",
-  "integration_head": "79677e623651e1cbac578df60ba9d15b0fb1f887",
+  "updated_at": "2026-09-10T07:43:59.355294+00:00",
+  "integration_head": "4f5c6bad65b8ea6645a199ae1ca5cd5b865b4b10",
   "development_version": "0.7.0.dev0",
   "local_validation": {
     "command": "pytest --cov=dev_autopilot --cov-fail-under=80 -q",
-    "passed": 398,
+    "passed": 401,
     "skipped": 1,
-    "coverage_percent": 82.32,
-    "code_commit": "7543530",
+    "coverage_percent": 82.78,
+    "code_commit": "5132e64",
     "scope": "Windows Python 3.12; Linux process-group test skipped",
     "ruff": "passed",
     "mypy": "53 source files passed",
@@ -127,6 +127,6 @@
     "remote_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
     "sync_status": "verified SHA-256 readback",
     "wheel_file_id": "1iIdP_b9ChPRSnllES8wruCA2e9NzriGf",
-    "build_source_commit": "7543530"
+    "build_source_commit": "5132e64"
   }
 }
