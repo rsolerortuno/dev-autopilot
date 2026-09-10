@@ -48,13 +48,21 @@ def test_code_dataset_is_immutable_shape_and_broken_candidate_fails() -> None:
 
 def test_code_dataset_known_solution_passes_hidden_cases(tmp_path) -> None:
     task = load_tasks(dataset="tasks-code-v1")[0]
-    command = [sys.executable, "-c", "from pathlib import Path; Path('solution.py').write_text('def solve(inputs):\\n    return inputs\\n')"]
+    command = [
+        sys.executable,
+        "-c",
+        "from pathlib import Path; Path('solution.py').write_text('def solve(inputs):\\n    return inputs\\n')",
+    ]
     result = run_task(task, command)
     assert result.success is True
 
 
 def test_code_oracle_timeout_is_failure() -> None:
     task = load_tasks(dataset="tasks-code-v1")[0]
-    command = [sys.executable, "-c", "from pathlib import Path; Path('solution.py').write_text('def solve(inputs):\\n    while True: pass\\n')"]
+    command = [
+        sys.executable,
+        "-c",
+        "from pathlib import Path; Path('solution.py').write_text('def solve(inputs):\\n    while True: pass\\n')",
+    ]
     result = run_task(task, command)
     assert result.success is False

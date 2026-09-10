@@ -332,9 +332,7 @@ class ContinuousProjectRunner:
             runtime_job = milestone.job
             if runtime_job.budget.project_id is None:
                 runtime_job = runtime_job.model_copy(
-                    update={
-                        "budget": runtime_job.budget.model_copy(update={"project_id": f"{charter.project_id}:{project_run_id}"})
-                    }
+                    update={"budget": runtime_job.budget.model_copy(update={"project_id": charter.project_id})}
                 )
             orchestrator = self.orchestrator_factory(runtime_job)
             if run_id is None:

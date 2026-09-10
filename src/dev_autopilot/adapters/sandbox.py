@@ -29,7 +29,7 @@ PopenFactory = Callable[..., subprocess.Popen[str]]
 def _runtime_identity() -> tuple[int, int]:
     if os.name != "posix" or not hasattr(os, "getuid") or not hasattr(os, "getgid"):
         raise RuntimeError("sandbox execution requires POSIX uid/gid support")
-    uid, gid = os.getuid(), os.getgid()
+    uid, gid = int(vars(os)["getuid"]()), int(vars(os)["getgid"]())
     if uid == 0 or gid == 0:
         raise RuntimeError("sandbox refuses to run as root")
     return uid, gid

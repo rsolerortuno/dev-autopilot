@@ -117,8 +117,15 @@ def test_barrier_competing_mutations_are_serialized(tmp_path):
 
 def test_barrier_crash_after_publish_does_not_resurrect_job(tmp_path):
     class CrashOnCleanup(LocalStorageBackend):
+        crashed = False
+
         def delete(self, key):
-            if key.endswith("/running/crash-barrier.json") and self.exists("devautopilot/completed/crash-barrier.json"):
+            if (
+                not self.crashed
+                and key.endswith("/running/crash-barrier.json")
+                and self.exists("devautopilot/completed/crash-barrier.json")
+            ):
+                self.crashed = True
                 raise OSError("simulated crash after terminal publication")
             return super().delete(key)
 

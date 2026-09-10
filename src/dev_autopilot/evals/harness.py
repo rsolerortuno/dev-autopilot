@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import html
 import hashlib
+import html
 import json
 import os
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 MAX_CAPTURE_BYTES = 1_048_576
 
@@ -55,19 +56,44 @@ def _oracle(task: Task, task_dir: Path) -> bool:
     if kind == "json":
         return bool(json.loads(output.read_text(encoding="utf-8")) == task.oracle["value"])
     if kind == "python_function":
-        payload = json.dumps(task.oracle["cases"], separators=(",", ":"))
+        module = task_dir / task.oracle["module"]
+        if module.is_symlink() or not module.resolve().is_relative_to(task_dir):
+            return False
+        payload = json.dumps([case[0] for case in task.oracle["cases"]], separators=(",", ":"))
         code = (
             "import importlib.util,json,sys; "
             "s=importlib.util.spec_from_file_location('candidate',sys.argv[1]); "
             "m=importlib.util.module_from_spec(s); s.loader.exec_module(m); "
             "f=getattr(m,sys.argv[2]); cases=json.loads(sys.stdin.read()); "
-            "print(json.dumps([f(x) == y for x,y in cases]))"
+            "print(json.dumps([f(x) for x in cases]))"
         )
-        check = subprocess.run(
-            [os.environ.get("PYTHON", "python"), "-c", code, task.oracle["module"], task.oracle["function"]],
-            cwd=task_dir, input=payload, text=True, capture_output=True, timeout=2,
-        )
-        return check.returncode == 0 and json.loads(check.stdout) == [True] * len(task.oracle["cases"])
+        with tempfile.TemporaryFile() as inputs, tempfile.TemporaryFile() as outputs:
+            inputs.write(payload.encode())
+            inputs.seek(0)
+            check = subprocess.Popen(
+                [sys.executable, "-I", "-c", code, str(module), task.oracle["function"]],
+                cwd=task_dir,
+                stdin=inputs,
+                stdout=outputs,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                env={key: value for key, value in os.environ.items() if key in {"PATH", "SYSTEMROOT", "TEMP", "TMP"}},
+            )
+            deadline = time.monotonic() + 2
+            while check.poll() is None:
+                if time.monotonic() >= deadline or os.fstat(outputs.fileno()).st_size > MAX_CAPTURE_BYTES:
+                    if os.name == "posix":
+                        os.killpg(check.pid, getattr(signal, "SIGKILL", 9))  # type: ignore[attr-defined]
+                    else:
+                        check.kill()
+                    check.wait()
+                    return False
+                time.sleep(0.01)
+            if os.fstat(outputs.fileno()).st_size > MAX_CAPTURE_BYTES:
+                return False
+            outputs.seek(0)
+            actual = json.loads(outputs.read(MAX_CAPTURE_BYTES))
+            return check.returncode == 0 and actual == [case[1] for case in task.oracle["cases"]]
     raise ValueError(f"unsupported oracle kind: {kind}")
 
 
@@ -105,7 +131,7 @@ def run_task(task: Task, command: list[str], timeout: float = 10.0) -> EvalResul
                     stream.seek(0, 2)
                     end = stream.tell()
                     stream.seek(max(0, end - MAX_CAPTURE_BYTES))
-                    return stream.read(MAX_CAPTURE_BYTES).decode("utf-8", errors="replace")
+                    return cast(bytes, stream.read(MAX_CAPTURE_BYTES)).decode("utf-8", errors="replace")
 
                 stderr = _tail(stderr_file)
                 try:
@@ -158,7 +184,9 @@ def run_evaluation(
         output.mkdir(parents=True, exist_ok=True)
         payload = {
             "dataset": dataset,
-            "dataset_sha256": hashlib.sha256(Path(__file__).with_name("data").joinpath(f"{dataset}.json").read_bytes()).hexdigest(),
+            "dataset_sha256": hashlib.sha256(
+                Path(__file__).with_name("data").joinpath(f"{dataset}.json").read_bytes()
+            ).hexdigest(),
             "config_label": config_label,
             "split": split,
             "repetitions": repetitions,

@@ -140,7 +140,8 @@ class BudgetStore:
                 (config.project_id, config.milestone_id),
             ).fetchone()[0]
             project_cost = db.execute(
-                "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) FROM budget_reservation WHERE project_id=?",
+                "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) "
+                "FROM budget_reservation WHERE project_id=?",
                 (config.project_id,),
             ).fetchone()[0]
             if (
@@ -222,7 +223,8 @@ class BudgetStore:
             cost = actual_micro_usd if actual_micro_usd is not None else row["estimated_micro_usd"]
             milestone_total = (
                 db.execute(
-                    "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) FROM budget_reservation WHERE project_id=? AND milestone_id=?",
+                    "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) "
+                "FROM budget_reservation WHERE project_id=? AND milestone_id=?",
                     (row["project_id"], row["milestone_id"]),
                 ).fetchone()[0]
                 - row["estimated_micro_usd"]
@@ -230,7 +232,8 @@ class BudgetStore:
             )
             project_total = (
                 db.execute(
-                    "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) FROM budget_reservation WHERE project_id=?",
+                    "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) "
+                "FROM budget_reservation WHERE project_id=?",
                     (row["project_id"],),
                 ).fetchone()[0]
                 - row["estimated_micro_usd"]

@@ -15,6 +15,7 @@ from dev_autopilot.db import SQLiteStore
 from dev_autopilot.gates import GateEvaluator
 from dev_autopilot.models import (
     AuditReport,
+    EvidencePolicy,
     ExecutionResult,
     FilePathRule,
     JobSpecification,
@@ -44,7 +45,7 @@ def _job(repository: Path, output: Path) -> JobSpecification:
         test_commands=TestCommands(
             baseline="python -m compileall .", fast="python -m compileall .", final="python -m compileall ."
         ),
-        evidence={"milestone_id": "M06", "bundle_directory": str(output / "bundles")},
+        evidence=EvidencePolicy(milestone_id="M06", bundle_directory=str(output / "bundles")),
     )
 
 

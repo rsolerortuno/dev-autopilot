@@ -127,8 +127,12 @@ def test_provider_duplicate_invocation_executes_adapter_once(tmp_path: Path) -> 
             return SimpleNamespace(status="SUCCESS", usage_micro_usd=None)
 
     wrapped = BudgetedAgentAdapter(
-        Adapter(), provider="test", model=None, budget=BudgetStore(tmp_path / "budget.sqlite"),
-        config=BudgetConfig("p", "m", max_calls=2), estimated_micro_usd=1,
+        Adapter(),
+        provider="test",
+        model=None,
+        budget=BudgetStore(tmp_path / "budget.sqlite"),
+        config=BudgetConfig("p", "m", max_calls=2),
+        estimated_micro_usd=1,
     )
     context = {"invocation_id": "stable"}
     wrapped.execute(task="task", repository=tmp_path, context=context, output_contract="json")
@@ -139,7 +143,10 @@ def test_provider_duplicate_invocation_executes_adapter_once(tmp_path: Path) -> 
 
 def test_provider_requires_invocation_id(tmp_path: Path) -> None:
     wrapped = BudgetedAgentAdapter(
-        object(), provider="test", model=None, budget=BudgetStore(tmp_path / "budget.sqlite"),
+        object(),
+        provider="test",
+        model=None,
+        budget=BudgetStore(tmp_path / "budget.sqlite"),
         config=BudgetConfig("p", "m", max_calls=1),
     )
     with pytest.raises(ValueError, match="invocation_id"):
@@ -152,8 +159,12 @@ def test_provider_crash_leaves_claimed_reservation_ambiguous(tmp_path: Path) -> 
             raise RuntimeError("crash")
 
     wrapped = BudgetedAgentAdapter(
-        Crashing(), provider="test", model=None, budget=BudgetStore(tmp_path / "budget.sqlite"),
-        config=BudgetConfig("p", "m", max_calls=2), estimated_micro_usd=1,
+        Crashing(),
+        provider="test",
+        model=None,
+        budget=BudgetStore(tmp_path / "budget.sqlite"),
+        config=BudgetConfig("p", "m", max_calls=2),
+        estimated_micro_usd=1,
     )
     context = {"invocation_id": "crashed"}
     with pytest.raises(RuntimeError):

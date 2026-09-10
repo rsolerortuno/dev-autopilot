@@ -46,9 +46,16 @@ def test_command_contains_isolation_and_mount_policy(tmp_path: Path, monkeypatch
     command = adapter()._docker_command(tmp_path, tmp_path / "context.json", tmp_path / "output", "container")
     joined = " ".join(command)
     required = (
-        "--pull never", "--read-only", "--cap-drop ALL", "no-new-privileges:true",
-        "--network none", "--pids-limit 128", "--memory 512m", "--cpus 1",
-        "/tmp:rw,noexec,nosuid,size=64m", "--user 1000:1000",
+        "--pull never",
+        "--read-only",
+        "--cap-drop ALL",
+        "no-new-privileges:true",
+        "--network none",
+        "--pids-limit 128",
+        "--memory 512m",
+        "--cpus 1",
+        "/tmp:rw,noexec,nosuid,size=64m",
+        "--user 1000:1000",
     )
     for item in required:
         assert item in joined
