@@ -1,4 +1,5 @@
 """Run the deterministic offline retrieval evaluation against a Git fixture."""
+
 from __future__ import annotations
 
 import argparse
@@ -69,8 +70,16 @@ def _make_fixture(root: Path) -> str:
     _git(root, "add", ".")
     subprocess.run(
         [
-            "git", "-C", str(root), "-c", "user.name=retrieval-eval", "-c", "user.email=eval@example.invalid",
-            "commit", "-qm", "fixture",
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=retrieval-eval",
+            "-c",
+            "user.email=eval@example.invalid",
+            "commit",
+            "-qm",
+            "fixture",
         ],
         check=True,
         capture_output=True,
