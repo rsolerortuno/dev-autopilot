@@ -29,7 +29,8 @@
     },
     "T06": {
       "status": "implementation_review",
-      "review": "Luna worktree changes undergoing correction"
+      "branch": "agent/luna-platform",
+      "remaining": "CLI approval grant integration and independent review"
     },
     "T07": {
       "status": "implemented_pending_final_validation",
@@ -40,23 +41,24 @@
       "review": "reviewed with corrections; final integration review pending"
     },
     "T09": {
-      "status": "implementation_review",
-      "review": "Luna worktree changes undergoing correction"
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
     },
     "T10": {
-      "status": "implementation_review",
-      "review": "Luna worktree changes undergoing correction"
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
     },
     "T11": {
-      "status": "implementation_review",
-      "review": "Luna worktree changes undergoing correction"
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
     },
     "T12": {
-      "status": "implementation_review",
-      "review": "Luna worktree changes undergoing correction"
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
     },
     "T13": {
-      "status": "pending"
+      "status": "pending_live_evaluation",
+      "remaining": "Single agent versus reviewer pipeline and audit ablation; matched model and budgets, 3 repetitions"
     },
     "T14": {
       "status": "implemented_pending_final_validation",
@@ -68,27 +70,34 @@
     },
     "T16": {
       "status": "implemented_pending_final_validation",
-      "review": "reviewed with corrections; final integration review pending"
+      "review": "reviewed with corrections; final integration review pending",
+      "remaining": "20-query retrieval benchmark and measured context utility"
     },
     "T17": {
-      "status": "implementation_review",
-      "review": "Luna worktree changes undergoing correction"
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
     },
     "T18": {
       "status": "pending"
     },
     "T19": {
-      "status": "pending"
+      "status": "partial",
+      "completed": "Notebook and wheel uploaded with SHA-256 readback",
+      "remaining": "Authenticated Colab runtime interrupt/resume smoke; eight-hour soak"
     },
     "T20": {
-      "status": "implementation_review",
-      "review": "Luna worktree changes undergoing correction"
+      "status": "implemented_pending_external_validation",
+      "review": "Independent static review and local tests; full milestone acceptance not claimed"
     },
     "T21": {
-      "status": "pending"
+      "status": "partial",
+      "completed": "Evidence matrix and demo script documented",
+      "remaining": "Live examples, measured comparisons, owner video and explanation"
     },
     "T22": {
-      "status": "pending"
+      "status": "blocked_by_acceptance_gates",
+      "completed": "Development wheel clean installation, demo and Git bundle",
+      "remaining": "Final SHA CI, remaining plan criteria, owner review; no release publication"
     }
   },
   "external_checks": {
@@ -100,18 +109,24 @@
     "github_write": "git unauthenticated; GitHub connector create_tree returned 403 Resource not accessible by integration",
     "linux_ci": "pending writable GitHub connection or Linux runtime"
   },
-  "updated_at": "2026-09-09T22:34:39.595038+00:00",
-  "integration_head": "c91fb083a40944eedf972d058a45e0881b449a98",
+  "updated_at": "2026-09-10T07:38:17.415509+00:00",
+  "integration_head": "79677e623651e1cbac578df60ba9d15b0fb1f887",
   "development_version": "0.7.0.dev0",
   "local_validation": {
-    "command": "pytest -q --cov=dev_autopilot --cov-fail-under=80",
-    "passed": 327,
+    "command": "pytest --cov=dev_autopilot --cov-fail-under=80 -q",
+    "passed": 398,
     "skipped": 1,
-    "coverage_percent": 81.45,
-    "scope": "Windows checkpoint before latest integration; Linux process-group test skipped"
+    "coverage_percent": 82.32,
+    "code_commit": "7543530",
+    "scope": "Windows Python 3.12; Linux process-group test skipped",
+    "ruff": "passed",
+    "mypy": "53 source files passed",
+    "wheel_demo": "passed with exact wheel; synthetic providers"
   },
   "notebook": {
     "remote_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
-    "sync_status": "local updated; next upload pending"
+    "sync_status": "verified SHA-256 readback",
+    "wheel_file_id": "1iIdP_b9ChPRSnllES8wruCA2e9NzriGf",
+    "build_source_commit": "7543530"
   }
 }
