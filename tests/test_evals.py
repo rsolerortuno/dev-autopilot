@@ -66,3 +66,11 @@ def test_code_oracle_timeout_is_failure() -> None:
     ]
     result = run_task(task, command)
     assert result.success is False
+
+
+def test_candidate_output_flood_and_missing_executable_are_failures() -> None:
+    task = load_tasks()[0]
+    flood = run_task(task, [sys.executable, "-c", "import os; os.write(1, b'x' * 2097152)"], timeout=5)
+    assert not flood.success and flood.error == "candidate output limit exceeded"
+    missing = run_task(task, ["dev-autopilot-no-such-executable"])
+    assert not missing.success and missing.return_code is None

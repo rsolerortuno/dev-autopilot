@@ -9,11 +9,21 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
 MAX_CAPTURE_BYTES = 1_048_576
+
+
+def _stop(process: subprocess.Popen[bytes]) -> None:
+    with suppress(ProcessLookupError):
+        if os.name == "posix":
+            os.killpg(process.pid, getattr(signal, "SIGKILL", 9))  # type: ignore[attr-defined]
+        elif process.poll() is None:
+            process.kill()
+    process.wait(timeout=2)
 
 
 @dataclass(frozen=True)
@@ -83,13 +93,10 @@ def _oracle(task: Task, task_dir: Path) -> bool:
             deadline = time.monotonic() + 2
             while check.poll() is None:
                 if time.monotonic() >= deadline or os.fstat(outputs.fileno()).st_size > MAX_CAPTURE_BYTES:
-                    if os.name == "posix":
-                        os.killpg(check.pid, getattr(signal, "SIGKILL", 9))  # type: ignore[attr-defined]
-                    else:
-                        check.kill()
-                    check.wait()
+                    _stop(check)
                     return False
                 time.sleep(0.01)
+            _stop(check)
             if os.fstat(outputs.fileno()).st_size > MAX_CAPTURE_BYTES:
                 return False
             outputs.seek(0)
@@ -118,15 +125,18 @@ def run_task(task: Task, command: list[str], timeout: float = 10.0) -> EvalResul
                 process = subprocess.Popen(
                     command, cwd=task_dir, env=env, stdout=stdout_file, stderr=stderr_file, start_new_session=True
                 )
+                deadline = time.monotonic() + timeout
                 try:
-                    process.wait(timeout=timeout)
-                except subprocess.TimeoutExpired:
-                    if os.name == "posix":
-                        os.killpg(process.pid, getattr(signal, "SIGKILL", 9))  # type: ignore[attr-defined]
-                    else:
-                        process.kill()
-                    process.wait()
-                    raise
+                    while process.poll() is None:
+                        if any(os.fstat(f.fileno()).st_size > MAX_CAPTURE_BYTES for f in (stdout_file, stderr_file)):
+                            raise ValueError("candidate output limit exceeded")
+                        if time.monotonic() >= deadline:
+                            raise subprocess.TimeoutExpired(command, timeout)
+                        time.sleep(0.01)
+                    if any(os.fstat(f.fileno()).st_size > MAX_CAPTURE_BYTES for f in (stdout_file, stderr_file)):
+                        raise ValueError("candidate output limit exceeded")
+                finally:
+                    _stop(process)
 
                 def _tail(stream: Any) -> str:
                     stream.seek(0, 2)
@@ -145,6 +155,8 @@ def run_task(task: Task, command: list[str], timeout: float = 10.0) -> EvalResul
                 timed_out = False
         except subprocess.TimeoutExpired:
             success, error, return_code, timed_out = False, "candidate timed out", None, True
+        except (OSError, ValueError) as exc:
+            success, error, return_code, timed_out = False, str(exc)[:500], None, False
     return EvalResult(
         task.id,
         task.category,
@@ -183,9 +195,7 @@ def run_evaluation(
         raise ValueError("positive repetitions/timeout and a valid split are required")
     tasks = [t for t in load_tasks(dataset=dataset) if split == "all" or t.split == split]
     results = [
-        replace(run_task(task, command, timeout), repetition_id=repetition)
-        for repetition in range(repetitions)
-        for task in tasks
+        replace(run_task(task, command, timeout), repetition_id=repetition) for repetition in range(repetitions) for task in tasks
     ]
     if output:
         output.mkdir(parents=True, exist_ok=True)
