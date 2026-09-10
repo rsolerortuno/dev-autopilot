@@ -31,7 +31,19 @@ def test_expired_rejected(tmp_path):
     store = ApprovalGrantStore(tmp_path / "auth.sqlite")
     grant = store.issue(action="publish", diff_sha256=DIFF, actor="human", ttl_seconds=1, now=100)
     with pytest.raises(ApprovalError, match="expired"):
-        store.consume(grant, action="publish", diff_sha256="abc", actor="human", now=101)
+        store.consume(grant, action="publish", diff_sha256=DIFF, actor="human", now=101)
+
+
+def test_opt_in_grant_binds_run_id_and_rejects_replay_or_changed_diff(tmp_path):
+    store = ApprovalGrantStore(tmp_path / "auth.sqlite")
+    grant = store.issue(action="approve", diff_sha256=DIFF, actor="alice", run_id="run-1", ttl_seconds=60, now=100)
+    with pytest.raises(ApprovalError):
+        store.consume(grant, action="approve", diff_sha256=DIFF, actor="alice", run_id="run-2", now=101)
+    with pytest.raises(ApprovalError):
+        store.consume(grant, action="approve", diff_sha256="b" * 64, actor="alice", run_id="run-1", now=101)
+    store.consume(grant, action="approve", diff_sha256=DIFF, actor="alice", run_id="run-1", now=101)
+    with pytest.raises(ApprovalError):
+        store.consume(grant, action="approve", diff_sha256=DIFF, actor="alice", run_id="run-1", now=102)
 
 
 def test_concurrent_consumers_only_one_succeeds(tmp_path):

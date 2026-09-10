@@ -25,9 +25,12 @@ class ApprovalGrantStore:
         with self._connection() as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS approval_grants ("
-                "grant_id TEXT PRIMARY KEY, action TEXT NOT NULL, diff_sha256 TEXT NOT NULL, "
+                "grant_id TEXT PRIMARY KEY, run_id TEXT, action TEXT NOT NULL, diff_sha256 TEXT NOT NULL, "
                 "actor TEXT NOT NULL, expires_at REAL NOT NULL, used INTEGER NOT NULL DEFAULT 0)"
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(approval_grants)")}
+            if "run_id" not in columns:
+                connection.execute("ALTER TABLE approval_grants ADD COLUMN run_id TEXT")
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -38,10 +41,20 @@ class ApprovalGrantStore:
         finally:
             connection.close()
 
-    def issue(self, *, action: str, diff_sha256: str, actor: str, ttl_seconds: int, now: float | None = None) -> str:
+    def issue(
+        self,
+        *,
+        action: str,
+        diff_sha256: str,
+        actor: str,
+        ttl_seconds: int,
+        run_id: str | None = None,
+        now: float | None = None,
+    ) -> str:
         if (
             not action
             or not actor
+            or (run_id is not None and not run_id)
             or not _SHA256.fullmatch(diff_sha256)
             or isinstance(ttl_seconds, bool)
             or not isinstance(ttl_seconds, (int, float))
@@ -54,12 +67,21 @@ class ApprovalGrantStore:
         expires_at = (time.time() if now is None else now) + ttl_seconds
         with self._connection() as connection:
             connection.execute(
-                "INSERT INTO approval_grants(grant_id,action,diff_sha256,actor,expires_at) VALUES(?,?,?,?,?)",
-                (grant_id, action, diff_sha256, actor, expires_at),
+                "INSERT INTO approval_grants(grant_id,run_id,action,diff_sha256,actor,expires_at) VALUES(?,?,?,?,?,?)",
+                (grant_id, run_id, action, diff_sha256, actor, expires_at),
             )
         return grant_id
 
-    def consume(self, grant_id: str, *, action: str, diff_sha256: str, actor: str, now: float | None = None) -> None:
+    def consume(
+        self,
+        grant_id: str,
+        *,
+        action: str,
+        diff_sha256: str,
+        actor: str,
+        run_id: str | None = None,
+        now: float | None = None,
+    ) -> None:
         current = time.time() if now is None else now
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -67,7 +89,12 @@ class ApprovalGrantStore:
             if row is None or row["used"] or row["expires_at"] <= current:
                 connection.rollback()
                 raise ApprovalError("approval grant is missing, expired, or already used")
-            if row["action"] != action or row["diff_sha256"] != diff_sha256 or row["actor"] != actor:
+            if (
+                row["action"] != action
+                or row["diff_sha256"] != diff_sha256
+                or row["actor"] != actor
+                or (row["run_id"] is not None and row["run_id"] != run_id)
+            ):
                 connection.rollback()
                 raise ApprovalError("approval grant does not match action, diff, or actor")
             updated = connection.execute(
