@@ -191,7 +191,7 @@ def main() -> int:
     args = parser.parse_args()
     report = evaluate(args.output, args.repository)
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 0
+    return 2 if report.get("status") == "blocked" else 0
 
 
 if __name__ == "__main__":
