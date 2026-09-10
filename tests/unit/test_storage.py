@@ -183,11 +183,7 @@ def test_local_replace_retries_transient_windows_permission(tmp_path, monkeypatc
         return original(src, dst)
 
     monkeypatch.setattr("dev_autopilot.storage.backend.os.replace", flaky_replace)
-    digest = (
-        backend.put_bytes("lease.json", b"payload")
-        if method == "put_bytes"
-        else backend.put_file("lease.json", source)
-    )
+    digest = backend.put_bytes("lease.json", b"payload") if method == "put_bytes" else backend.put_file("lease.json", source)
     assert digest == hashlib.sha256(b"payload").hexdigest()
     assert backend.get_bytes("lease.json") == b"payload"
     assert attempts == 3

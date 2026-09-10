@@ -1,11 +1,13 @@
 import json
+from pathlib import Path
 
 from dev_autopilot.demo import run
 from dev_autopilot.health import check_database
 
 
-def test_offline_demo_writes_verified_json_and_html(tmp_path):
-    report = run(tmp_path / "demo")
+def test_offline_demo_writes_verified_json_and_html(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    report = run(Path("demo"))
     assert report["successful_bundle"] is True
     assert report["fake_agents"] is True
     assert report["provider_evaluation"] is False
