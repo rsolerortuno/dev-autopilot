@@ -23,6 +23,7 @@ class ApprovalGrantStore:
         self.database = Path(database)
         self.database.parent.mkdir(parents=True, exist_ok=True)
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS approval_grants ("
                 "grant_id TEXT PRIMARY KEY, run_id TEXT, action TEXT NOT NULL, diff_sha256 TEXT NOT NULL, "
@@ -31,6 +32,7 @@ class ApprovalGrantStore:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(approval_grants)")}
             if "run_id" not in columns:
                 connection.execute("ALTER TABLE approval_grants ADD COLUMN run_id TEXT")
+            connection.commit()
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -89,12 +91,7 @@ class ApprovalGrantStore:
             if row is None or row["used"] or row["expires_at"] <= current:
                 connection.rollback()
                 raise ApprovalError("approval grant is missing, expired, or already used")
-            if (
-                row["action"] != action
-                or row["diff_sha256"] != diff_sha256
-                or row["actor"] != actor
-                or (row["run_id"] is not None and row["run_id"] != run_id)
-            ):
+            if row["action"] != action or row["diff_sha256"] != diff_sha256 or row["actor"] != actor or row["run_id"] != run_id:
                 connection.rollback()
                 raise ApprovalError("approval grant does not match action, diff, or actor")
             updated = connection.execute(

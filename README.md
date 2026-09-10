@@ -1,5 +1,11 @@
 # Dev Autopilot
 
+**Development branch: 0.7.0.dev0, progressing toward 1.0.0.**
+See [execution state](docs/execution-state.json), the [1.0.0 plan](docs/PLAN-1.0.0.md)
+and the [capability/evidence matrix](docs/PORTFOLIO-EVIDENCE.md). Local fixture
+tests and the offline demo pass; live provider comparisons, Linux/Colab gates
+and the owner's final release review remain pending.
+
 Dev Autopilot is a persistent, auditable development orchestrator for scientific
 software. It runs bounded implementation, deterministic validation, adversarial
 audit, independent review, correction, and evidence packaging while SQLite

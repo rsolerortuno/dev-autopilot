@@ -397,8 +397,11 @@ def main(argv: list[str] | None = None) -> int:
                 raise TransitionError("approval grants require READY_FOR_HUMAN_REVIEW runs")
             diff_sha256 = LocalCommandAdapter().diff_sha256(repository=Path(run.job.repository))
             grant = ApprovalGrantStore(store.path.with_name("authorization.sqlite3")).issue(
-                run_id=str(args.run_id), action="approve", diff_sha256=diff_sha256,
-                actor=args.actor, ttl_seconds=args.ttl_seconds,
+                run_id=str(args.run_id),
+                action="approve",
+                diff_sha256=diff_sha256,
+                actor=args.actor,
+                ttl_seconds=args.ttl_seconds,
             )
             print(grant)
             return 0
@@ -501,7 +504,7 @@ def main(argv: list[str] | None = None) -> int:
                     actor=args.actor,
                 )
             store.mark_approved(args.run_id)
-            store.append_event(args.run_id, EventType.HUMAN_APPROVED, actor="human", reason="approved")
+            store.append_event(args.run_id, EventType.HUMAN_APPROVED, actor=args.actor, reason="approved")
             _print_run(store.get_run(args.run_id))
             return 0
 
