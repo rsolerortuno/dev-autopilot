@@ -13,7 +13,10 @@ def test_retrieval_evaluation_reports_metrics_and_provenance(tmp_path):
     assert report["model_quality_claim"] is False
     assert report["query_count"] == 20
     assert report["fixture_commit"] == report["index_commit"]
-    assert report["metrics"] == {"recall_at_5": 1.0, "mrr": 1.0}
+    # Filename intent puts bundle.py first for Q12, with the annotated evidence.py second.
+    # Preserve that measured tradeoff rather than reporting a perfect reciprocal rank.
+    assert {row["id"]: row["rank"] for row in report["queries"]} == {f"Q{i:02d}": 2 if i == 12 else 1 for i in range(1, 21)}
+    assert report["metrics"] == {"recall_at_5": 1.0, "mrr": (19 + 0.5) / 20}
     assert len(report["queries"]) == 20
     assert all(len(row["query_sha256"]) == 64 for row in report["queries"])
     expected_hash = hashlib.sha256(json.dumps(module["QUERIES"], sort_keys=True).encode()).hexdigest()

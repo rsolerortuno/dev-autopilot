@@ -10,7 +10,9 @@ Do not publish a release or tag until the owner reviews the final candidate.
 ## Collaboration
 
 Use one coordinator and at most three gpt-5.6-luna subagents. Each agent works in
-an assigned Git worktree/branch. One owner at a time edits shared contracts,
+an isolated worktree. The owner's coordinator preference is gpt-6-astra with low
+reasoning effort (configured by the host model selector). Assign each worker a
+Git branch. One owner at a time edits shared contracts,
 schemas, DB or CLI. Commit bounded changes, provide test evidence, and have a
 different agent review before integration. Never weaken a gate to claim success.
 Linux/WSL2 is the supported process runtime; offline storage should be portable.
