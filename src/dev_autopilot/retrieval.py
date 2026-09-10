@@ -39,7 +39,15 @@ def _terms(text: str) -> set[str]:
 
 def _tokens(text: str) -> list[str]:
     separated = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
-    return re.findall(r"[a-z][a-z0-9]{1,}|[0-9]+", separated.lower())
+    tokens = re.findall(r"[a-z][a-z0-9]{1,}|[0-9]+", separated.lower())
+    return [
+        token[:-3] + "y"
+        if len(token) > 4 and token.endswith("ies")
+        else token[:-1]
+        if len(token) > 4 and token.endswith("s") and not token.endswith(("ss", "us", "is"))
+        else token
+        for token in tokens
+    ]
 
 
 def _batch_sizes(root: Path, object_ids: list[str]) -> dict[str, int]:
@@ -180,6 +188,7 @@ class RetrievalIndex:
         terms = _terms(query)
         counts = [Counter(_tokens(p.content)) for p in self.passages]
         path_terms = [_terms(p.path) for p in self.passages]
+        filename_terms = [_terms(Path(p.path).stem) for p in self.passages]
         document_frequency = Counter(
             term for tokens, path in zip(counts, path_terms, strict=True) for term in tokens.keys() | path
         )
@@ -197,6 +206,8 @@ class RetrievalIndex:
                 value += inverse_frequency * frequency * 2.2 / (frequency + normalization)
                 if term in path_terms[position]:
                     value += 0.75 * inverse_frequency
+                if any(term == name or (len(name) >= 4 and term.startswith(name)) for name in filename_terms[position]):
+                    value += 3.0 * inverse_frequency
             return value
 
         ranked = sorted(
