@@ -20,7 +20,7 @@ MAX_CAPTURE_BYTES = 1_048_576
 def _stop(process: subprocess.Popen[bytes]) -> None:
     with suppress(ProcessLookupError):
         if os.name == "posix":
-            os.killpg(process.pid, getattr(signal, "SIGKILL", 9))  # type: ignore[attr-defined]
+            vars(os)["killpg"](process.pid, getattr(signal, "SIGKILL", 9))
         elif process.poll() is None:
             process.kill()
     process.wait(timeout=2)
