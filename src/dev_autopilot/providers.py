@@ -44,6 +44,8 @@ class BudgetedAgentAdapter:
         call_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         estimated_micro_usd = self.estimated_micro_usd
         started = now()
+        run_id = self.run_id or (context.get("run_id") if isinstance(context.get("run_id"), str) else None)
+        phase = self.phase or (context.get("state") if isinstance(context.get("state"), str) else None)
         self.budget.reserve(self.config, call_id=call_id, estimated_micro_usd=estimated_micro_usd)
         self.budget.claim_execution(call_id)
         try:
@@ -65,8 +67,8 @@ class BudgetedAgentAdapter:
                         actual_micro_usd,
                         self.config.project_id,
                         self.config.milestone_id,
-                        self.run_id,
-                        self.phase,
+                        str(run_id) if run_id is not None else None,
+                        str(phase) if phase is not None else None,
                     ),
                 )
             return result
@@ -83,8 +85,8 @@ class BudgetedAgentAdapter:
                         None,
                         self.config.project_id,
                         self.config.milestone_id,
-                        self.run_id,
-                        self.phase,
+                        str(run_id) if run_id is not None else None,
+                        str(phase) if phase is not None else None,
                     ),
                 )
             raise

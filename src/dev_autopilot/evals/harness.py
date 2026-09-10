@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -38,6 +38,7 @@ class EvalResult:
     timed_out: bool
     return_code: int | None
     error: str | None
+    repetition_id: int = 0
 
 
 def load_tasks(path: Path | None = None, dataset: str = "tasks-v1") -> list[Task]:
@@ -178,8 +179,14 @@ def run_evaluation(
     dataset: str = "tasks-v1",
     config_label: str = "default",
 ) -> list[EvalResult]:
+    if repetitions < 1 or timeout <= 0 or split not in {"train", "holdout", "all"}:
+        raise ValueError("positive repetitions/timeout and a valid split are required")
     tasks = [t for t in load_tasks(dataset=dataset) if split == "all" or t.split == split]
-    results = [run_task(task, command, timeout) for _ in range(repetitions) for task in tasks]
+    results = [
+        replace(run_task(task, command, timeout), repetition_id=repetition)
+        for repetition in range(repetitions)
+        for task in tasks
+    ]
     if output:
         output.mkdir(parents=True, exist_ok=True)
         payload = {

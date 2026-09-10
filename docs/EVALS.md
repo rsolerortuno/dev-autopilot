@@ -9,8 +9,23 @@ file named by the task prompt. The candidate receives only task files and the
 task ID environment variable. Oracle data is retained by the evaluator and is
 never copied into the temporary repository or candidate environment. It is an
 installation and protocol smoke suite, not evidence of the M09 agent-quality
-threshold; a future dataset version should add code-repair tasks with hidden
-unit-test oracles.
+threshold.
+
+`--dataset tasks-code-v1` selects 30 distinct code-repair exercises: numerical,
+data and software transformations. Each starts with a broken `solve(inputs)` in
+`solution.py`; `TASK.md` describes the contract. Expected answers remain in the
+parent evaluator, while a separate Python subprocess receives only inputs and
+returns JSON values. The evaluator bounds its readback to 1 MiB and terminates
+the oracle after two seconds. This is process isolation, not an OS sandbox;
+run untrusted candidates in a disposable Linux container. The published dataset
+is not a confidential benchmark, and no model-quality result is yet claimed.
+
+Reports include dataset SHA-256, configuration label and per-result repetition ID.
+For comparison, freeze the dataset, model, allowed tools and budget; run the
+single-agent, reviewer pipeline and no-audit variants with separate labels and
+three repetitions each. Keep train results out of the holdout score. Report
+failures and unknown costs as recorded, and retain provider billing separately.
+The fixture correctness tests are not an agent benchmark.
 
 Run a candidate and write both JSON and HTML reports with:
 

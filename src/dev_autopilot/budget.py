@@ -224,7 +224,7 @@ class BudgetStore:
             milestone_total = (
                 db.execute(
                     "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) "
-                "FROM budget_reservation WHERE project_id=? AND milestone_id=?",
+                    "FROM budget_reservation WHERE project_id=? AND milestone_id=?",
                     (row["project_id"], row["milestone_id"]),
                 ).fetchone()[0]
                 - row["estimated_micro_usd"]
@@ -233,7 +233,7 @@ class BudgetStore:
             project_total = (
                 db.execute(
                     "SELECT coalesce(sum(coalesce(actual_micro_usd, estimated_micro_usd)),0) "
-                "FROM budget_reservation WHERE project_id=?",
+                    "FROM budget_reservation WHERE project_id=?",
                     (row["project_id"],),
                 ).fetchone()[0]
                 - row["estimated_micro_usd"]

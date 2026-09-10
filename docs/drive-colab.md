@@ -2,7 +2,9 @@
 
 ## Durable root
 
-Create one Drive folder for Dev Autopilot and copy its folder ID. The backend
+Use the authorized project folder `1PAkI23Ajzu5QcmcI8quw_Xfd6-4UhROO`
+under parent `1o5gfkBSUw32YOoqc555yLUE3YCQYV8F_`; exact subfolder IDs
+are stored in `drive-workspace.json`. The backend
 creates only folders needed by write operations. Reads never create paths.
 
 Recommended logical layout:
@@ -19,9 +21,10 @@ DevAutopilot/
 
 ## Install the exact wheel
 
-Build `dev_autopilot-0.6.0-py3-none-any.whl`, upload it to Drive, then set its
+Build the current development wheel, upload it to `artefactos`, then set its
 path in `notebooks/dev_autopilot_colab_worker.ipynb`. The notebook deliberately
-does not install an unpinned GitHub branch.
+does not install an unpinned GitHub branch. It verifies the wheel SHA-256 against
+the recorded manifest before installing. This development checkpoint is not 1.0.0.
 
 ## Authentication
 

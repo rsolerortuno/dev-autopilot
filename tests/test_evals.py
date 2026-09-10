@@ -51,7 +51,7 @@ def test_code_dataset_known_solution_passes_hidden_cases(tmp_path) -> None:
     command = [
         sys.executable,
         "-c",
-        "from pathlib import Path; Path('solution.py').write_text('def solve(inputs):\\n    return inputs\\n')",
+        "from pathlib import Path; Path('solution.py').write_text('def solve(inputs):\\n    return sum(inputs)/len(inputs)\\n')",
     ]
     result = run_task(task, command)
     assert result.success is True
