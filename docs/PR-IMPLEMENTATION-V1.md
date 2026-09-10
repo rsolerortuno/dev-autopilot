@@ -15,6 +15,11 @@ Twenty development retrieval queries improved from Recall@5=0.40 to 0.90; these
 are not held-out model-quality results. CI results on this branch are separate
 from that local evidence.
 
-Remaining acceptance gates include Linux/Docker execution, real-provider matched
+Linux CI (Python 3.11/3.12/3.13), CodeQL and a live Docker enforcement/timeout
+smoke passed at bfeb515. The branch also includes an offline eight-hour durability
+runner with incremental checkpoints and suspension-gap exclusion. A local run is
+in progress; it is not yet evidence of eight hours completed.
+
+Remaining acceptance gates include real-provider matched
 evaluations and billing, Colab interruption/recovery, an eight-hour soak and the
 owner's portfolio presentation/final review. No 1.0.0 tag or release is published.

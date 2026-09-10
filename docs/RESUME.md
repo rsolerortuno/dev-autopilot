@@ -28,8 +28,8 @@ mypy src
 
 The bundle preserves local history and worktree branch references. Recreate
 worktrees with `git worktree add` only after checking `git worktree list`.
-The original GitHub connection could read but returned 403 on writes; Git local
-had no push credentials. Recheck access only after the connection changes.
+Git push now works. The active draft is PR #13 on `implementation/v1`.
+CI and CodeQL passed for e1ecfc1; verify later commits separately.
 Do not print or copy credentials into evidence.
 
 ## Colab
@@ -42,6 +42,13 @@ Use only one Drive worker: local SQLite coordination does not coordinate separat
 Colab hosts. Keep required credentials in Colab Secrets, not Drive.
 
 ## Remaining release gates
+
+Local offline soak started on 2026-09-10, PID 26992. Inspect
+`outputs/soak-8h-20260910/soak-checkpoint.json` in the parent workspace and the
+matching stdout/stderr logs before starting another run. This process needs the
+computer to remain available; suspension gaps do not count toward the target.
+If interrupted, preserve its evidence and start a fresh run in a new directory.
+See `OWNER-HANDOFF.md` for the account actions still needed.
 
 - CI on Linux/Python 3.11–3.13 for the final code SHA and live Docker enforcement.
 - Matched-model single-agent/pipeline/ablation evaluations, three repetitions,

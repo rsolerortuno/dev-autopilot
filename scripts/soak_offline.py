@@ -152,7 +152,7 @@ def run(output: Path, *, duration_seconds: float = 28_800.0, interval_seconds: f
         except Exception as error:  # checkpoint the failure before returning
             failures.append({"cycle": cycles, "error": f"{type(error).__name__}: {error}"})
             status = "failed"
-            operation_seconds = max(0.0, time.monotonic() - cycle_started)
+            operation_seconds = _normal_wait_observed(time.monotonic() - cycle_started, max(interval_seconds, 1.0))
             active_seconds += operation_seconds
             observed_seconds += operation_seconds
             _atomic_json(
@@ -160,7 +160,7 @@ def run(output: Path, *, duration_seconds: float = 28_800.0, interval_seconds: f
                 _report(status, started, active_seconds, observed_seconds, duration_seconds, cycles, failures, results),
             )
             break
-        operation_seconds = max(0.0, time.monotonic() - cycle_started)
+        operation_seconds = _normal_wait_observed(time.monotonic() - cycle_started, max(interval_seconds, 1.0))
         active_seconds += operation_seconds
         observed_seconds += operation_seconds
         _atomic_json(

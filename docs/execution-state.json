@@ -84,7 +84,7 @@
     "T19": {
       "status": "partial",
       "completed": "Notebook and wheel uploaded with SHA-256 readback",
-      "remaining": "Authenticated Colab runtime interrupt/resume smoke; eight-hour soak"
+      "remaining": "Authenticated Colab runtime interrupt/resume smoke; offline eight-hour soak running separately"
     },
     "T20": {
       "status": "implemented_pending_external_validation",
@@ -102,17 +102,17 @@
     }
   },
   "external_checks": {
-    "linux_runtime": "WSL not installed; Docker not found",
-    "live_providers": "not run",
+    "linux_runtime": "GitHub Actions Ubuntu available; local Windows has no Docker/WSL",
+    "live_providers": "model choice delegated; spending cap and usable credentials pending",
     "colab": "not authenticated or allocated",
-    "eight_hour_soak": "not run",
+    "eight_hour_soak": "running locally; PID 26992; outputs/soak-8h-20260910/soak-checkpoint.json; target 28800 observed seconds; no completion claimed",
     "human_portfolio_defense": "pending owner",
-    "github_write": "git unauthenticated; GitHub connector create_tree returned 403 Resource not accessible by integration",
-    "linux_ci": "pending writable GitHub connection or Linux runtime",
-    "github_latest_read": "Connector metadata discovery listed get_repo, but invocation returned Unknown tool; earlier writes returned 403"
+    "github_write": "git push successful; draft PR https://github.com/rsolerortuno/dev-autopilot/pull/13",
+    "linux_ci": "passed Python 3.11/3.12/3.13, dependency audit, lint, format, mypy, wheel build and fresh install at bfeb515",
+    "docker_runtime": "passed live Docker enforcement and timeout cleanup at bfeb515"
   },
-  "updated_at": "2026-09-10T20:36:01.459467+00:00",
-  "integration_head": "482e1e0bc967f81d800e2c245ca15d982bb7d05b",
+  "updated_at": "2026-09-10T20:52:29.868808+00:00",
+  "integration_head": "73ae605",
   "development_version": "0.7.0.dev0",
   "local_validation": {
     "command": "pytest --cov=dev_autopilot --cov-fail-under=80 -q",
@@ -138,7 +138,7 @@
     "remote_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
     "sync_status": "verified SHA-256 readback",
     "wheel_file_id": "1iIdP_b9ChPRSnllES8wruCA2e9NzriGf",
-    "build_source_commit": "90600ff"
+    "build_source_commit": "e1ecfc101d4b940a18a17b0dd2c87c8b557a06c1"
   },
   "coordinator_preference": {
     "model": "gpt-6-astra",
@@ -149,5 +149,13 @@
     "model": "gpt-5.6-luna",
     "maximum_concurrent": 3,
     "isolation": "separate worktrees"
+  },
+  "github": {
+    "draft_pr": "https://github.com/rsolerortuno/dev-autopilot/pull/13",
+    "validated_commit": "bfeb5152f8df375c1a33b5e1d98e88404605d6d1",
+    "ci": "https://github.com/rsolerortuno/dev-autopilot/actions/runs/34528643475",
+    "codeql": "https://github.com/rsolerortuno/dev-autopilot/actions/runs/34528643452",
+    "docker": "https://github.com/rsolerortuno/dev-autopilot/actions/runs/34528643438",
+    "later_commits": "require their own CI results"
   }
 }
