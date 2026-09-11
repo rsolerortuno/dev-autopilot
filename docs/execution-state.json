@@ -113,7 +113,7 @@
   },
   "updated_at": "2026-09-10T23:10:22.891355+00:00",
   "integration_head": "73ae605",
-  "development_version": "0.9.0",
+  "development_version": "0.9.1",
   "local_validation": {
     "command": "pytest --cov=dev_autopilot --cov-fail-under=80 -q",
     "passed": 414,
@@ -137,8 +137,8 @@
   "notebook": {
     "remote_file_id": "1lmi8mNys22nKd8myjiSxrA6Eak7Sdglf",
     "sync_status": "verified SHA-256 readback",
-    "wheel_file_id": "1iIdP_b9ChPRSnllES8wruCA2e9NzriGf",
-    "build_source_commit": "e1ecfc101d4b940a18a17b0dd2c87c8b557a06c1"
+    "wheel_file_id": "15QYpb0wEFIG2dXSmK70Lx0fmfDmHhNXr",
+    "build_source_commit": "5592931 plus version 0.9.1 metadata"
   },
   "coordinator_preference": {
     "model": "gpt-6-astra",
@@ -159,9 +159,9 @@
     "later_commits": "require their own CI results"
   },
   "preview_release": {
-    "version": "0.9.0",
-    "status": "preparing",
-    "pr": 13,
-    "scope": "public preview, not 1.0.0 acceptance"
+    "version": "0.9.1",
+    "status": "candidate",
+    "fix": "CLI-safe approval IDs; preserves legacy grants",
+    "previous_release": "v0.9.0 published"
   }
 }

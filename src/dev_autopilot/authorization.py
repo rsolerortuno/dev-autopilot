@@ -65,7 +65,9 @@ class ApprovalGrantStore:
             or (now is not None and not isfinite(now))
         ):
             raise ValueError("action, diff_sha256, actor and positive ttl_seconds are required")
-        grant_id = secrets.token_urlsafe(24)
+        # Keep newly issued IDs safe as argparse option values.  Existing IDs
+        # remain valid because consumption treats the stored value opaquely.
+        grant_id = "grant_" + secrets.token_urlsafe(24)
         expires_at = (time.time() if now is None else now) + ttl_seconds
         with self._connection() as connection:
             connection.execute(

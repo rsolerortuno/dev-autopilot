@@ -54,11 +54,11 @@ jobs:
           name: dev-autopilot-release-${{ github.ref_name }}
           path: dist/
           if-no-files-found: error
-      - name: Publish authorized 0.9.0 preview
-        if: github.ref_name == 'v0.9.0'
+      - name: Publish authorized preview
+        if: github.ref_name == 'v0.9.0' || github.ref_name == 'v0.9.1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --verify-tag --prerelease --title "Dev Autopilot 0.9.0" \
-            --notes-file docs/RELEASE-0.9.0.md
+            --verify-tag --prerelease --title "Dev Autopilot ${GITHUB_REF_NAME#v}" \
+            --notes-file "docs/RELEASE-${GITHUB_REF_NAME#v}.md"
