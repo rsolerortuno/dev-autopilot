@@ -1,10 +1,34 @@
 # Dev Autopilot
 
+**A development orchestrator whose review evidence follows the exact code diff.**
+Findings carry stable IDs, severity, evidence and a diff hash. A changed diff
+invalidates earlier review conclusions. Open P0/P1 findings and any stale finding
+block acceptance. Implementation and independent review are separate workflow
+roles; local actor labels do not authenticate separate user identities.
+
+SQLite preserves progress across restarts, and a verified review bundle records
+what was changed, checked and accepted. This is the core portfolio demonstration:
+agent work is accepted against explicit evidence, not just a successful response.
+
 **Development preview: 0.9.0, progressing toward 1.0.0.**
 See [execution state](docs/execution-state.json), the [1.0.0 plan](docs/PLAN-1.0.0.md)
 and the [capability/evidence matrix](docs/PORTFOLIO-EVIDENCE.md). This is a CLI
 preview with no GUI. Linux CI and Docker checks pass. Live provider comparisons,
 cost evidence, Colab job recovery and final 1.0.0 acceptance remain pending.
+
+| Evidence | Current scope |
+| --- | --- |
+| Linux CI | Python 3.11–3.13; 418 tests passed, one opt-in Docker test skipped |
+| Docker | Separate live isolation and timeout-cleanup smoke passed |
+| Colab | Drive mount, installation and queue startup verified; no job completed |
+| Durability soak | About two observed hours so far; eight hours not yet demonstrated |
+| Provider quality and cost | Matched live comparisons and measured billing pending |
+
+The [current notebook](notebooks/dev_autopilot_colab_worker.ipynb) pins the
+**0.9.0** Drive wheel and verifies SHA-256 before installation. Its Drive build
+has its own checksum; use the published release's `SHA256SUMS.txt` for GitHub
+downloads. The preview version is a distribution milestone, not a claim that
+the [1.0.0 acceptance criteria](docs/PLAN-1.0.0.md) are complete.
 
 Dev Autopilot is a persistent, auditable development orchestrator for scientific
 software. It runs bounded implementation, deterministic validation, adversarial
