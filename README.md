@@ -10,7 +10,7 @@ SQLite preserves progress across restarts, and a verified review bundle records
 what was changed, checked and accepted. This is the core portfolio demonstration:
 agent work is accepted against explicit evidence, not just a successful response.
 
-**Development preview: 0.9.0, progressing toward 1.0.0.**
+**Development preview: 0.9.1, progressing toward 1.0.0.**
 See [execution state](docs/execution-state.json), the [1.0.0 plan](docs/PLAN-1.0.0.md)
 and the [capability/evidence matrix](docs/PORTFOLIO-EVIDENCE.md). This is a CLI
 preview with no GUI. Linux CI and Docker checks pass. Live provider comparisons,
@@ -25,7 +25,7 @@ cost evidence, Colab job recovery and final 1.0.0 acceptance remain pending.
 | Provider quality and cost | Matched live comparisons and measured billing pending |
 
 The [current notebook](notebooks/dev_autopilot_colab_worker.ipynb) pins the
-**0.9.0** Drive wheel and verifies SHA-256 before installation. Its Drive build
+**0.9.1** Drive wheel and verifies SHA-256 before installation. Its Drive build
 has its own checksum; use the published release's `SHA256SUMS.txt` for GitHub
 downloads. The preview version is a distribution milestone, not a claim that
 the [1.0.0 acceptance criteria](docs/PLAN-1.0.0.md) are complete.
@@ -35,7 +35,7 @@ software. It runs bounded implementation, deterministic validation, adversarial
 audit, independent review, correction, and evidence packaging while SQLite
 preserves every state transition across restarts.
 
-**Version 0.9.0 is a preview release for CLI workflows.** It preserves the
+**Version 0.9.1 is a preview release for CLI workflows.** It preserves the
 M00-M05 architecture from v0.5.0 while incorporating fixes validated during a
 real autonomous TargetIntel-IO milestone:
 
@@ -154,11 +154,11 @@ python -m pip install -e '.[dev,drive]'
 
 Python 3.11 or newer is required.
 
-For the 0.9.0 preview, install a wheel from the [GitHub Releases](https://github.com/rsolerortuno/dev-autopilot/releases) page after
+For the 0.9.1 preview, install a wheel from the [GitHub Releases](https://github.com/rsolerortuno/dev-autopilot/releases) page after
 checking its SHA-256, or install from source for development:
 
 ```bash
-python -m pip install ./dev_autopilot-0.9.0-py3-none-any.whl
+python -m pip install ./dev_autopilot-0.9.1-py3-none-any.whl
 python -m pip install -e '.[dev]'
 ```
 
@@ -425,5 +425,5 @@ operational guarantee than the evidence supports.
 - The offline soak checkpoint records approximately two observed hours so far,
   not a completed eight-hour run or Colab job.
 - Provider benchmark comparisons and budget-backed cost evidence are pending.
-- No 1.0.0 release or quality claim is made by this 0.9.0 preview; a live
+- No 1.0.0 release or quality claim is made by this 0.9.1 preview; a live
   provider benchmark still requires a planned dataset, budget, and analysis.

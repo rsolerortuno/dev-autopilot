@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 - 2026-09-11
+
+- Fix intermittent approval CLI failures when a random grant ID begins with a
+  hyphen. New grants use a CLI-safe prefix; existing grants remain valid.
+- Add a deterministic regression for the issue/approve path.
+- Publish a patch preview after Linux CI and package validation.
+
 ## 0.9.0 - 2026-09-11
 
 Public preview for user acceptance testing before 1.0.0.
